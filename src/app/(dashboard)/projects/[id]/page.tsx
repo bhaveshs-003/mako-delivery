@@ -13,7 +13,10 @@ import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
 import { ApprovalsTab } from "@/components/projects/tabs/ApprovalsTab";
 import { TicketsTab } from "@/components/projects/tabs/TicketsTab";
-import { PhasePlaceholder } from "@/components/shared/PhasePlaceholder";
+import { ChangeRequestsTab } from "@/components/projects/tabs/ChangeRequestsTab";
+import { MomsTab } from "@/components/projects/tabs/MomsTab";
+import { CommentsTab } from "@/components/projects/tabs/CommentsTab";
+import { DocumentsTab } from "@/components/projects/tabs/DocumentsTab";
 import { formatDate } from "@/lib/utils";
 
 const TABS: { key: string; label: string }[] = [
@@ -204,10 +207,20 @@ export default async function ProjectDetailPage({
         />
       )}
       {activeTab === "tickets" && <TicketsTab projectId={project.id} user={user} />}
-      {activeTab === "change-requests" && <PhasePlaceholder title="Change Requests" phase="Phase 5" description="Scope-change gate with timeline auto-adjustment." />}
-      {activeTab === "moms" && <PhasePlaceholder title="MoMs" phase="Phase 5" description="Meeting minutes with deadline enforcement and late-reason attribution." />}
-      {activeTab === "comments" && <PhasePlaceholder title="Comments" phase="Phase 5" description="Threaded comments with edit history and @mentions." />}
-      {activeTab === "documents" && <PhasePlaceholder title="Documents" phase="Phase 5" description="File uploads backed by S3 (or local fallback in dev)." />}
+      {activeTab === "change-requests" && (
+        <ChangeRequestsTab
+          projectId={project.id}
+          canRaise={can(user.role, "cr.raise") && canManage}
+          canDecide={can(user.role, "cr.decide") && canActOnProject(user, project)}
+        />
+      )}
+      {activeTab === "moms" && (
+        <MomsTab projectId={project.id} userId={user.id} canLog={can(user.role, "meeting.log") && canActOnProject(user, project)} />
+      )}
+      {activeTab === "comments" && <CommentsTab projectId={project.id} userId={user.id} />}
+      {activeTab === "documents" && (
+        <DocumentsTab projectId={project.id} canUpload={canActOnProject(user, project)} />
+      )}
     </div>
   );
 }

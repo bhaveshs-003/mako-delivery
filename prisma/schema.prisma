@@ -1,0 +1,792 @@
+// ============================================================================
+// MAKO–ROCKETLANE PROJECT GOVERNANCE PLATFORM — Prisma schema
+// ----------------------------------------------------------------------------
+// Design conventions (see Mako spec §2):
+//  - Universal columns: id (uuid), createdAt, updatedAt, createdBy, isArchived
+//  - `createdBy` and pure "actor stamp" columns (approvedBy, decidedBy,
+//    fulfilledBy, resolvedBy, archivedBy, deactivatedBy, uploadedBy,
+//    pausedBy, resumedBy, assignedBy...) are stored as scalar UUID strings.
+//    They intentionally do NOT declare Prisma relations back onto User: this
+//    keeps the User model tractable and mirrors the spec's rule that historical
+//    actor identity is preserved even if the user is later deactivated/deleted.
+//  - Relations we actually navigate in the UI (lead, assignees, author,
+//    recipient, organizer, ticket raiser/assignee) ARE modelled as relations.
+//  - audit_log columns are fully snake_case @map'd because raw SQL (the
+//    INSERT-ONLY trigger and hash-chain verifier) runs directly against them.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  super_admin
+  admin
+  sub_admin
+  rl_user
+  resource
+}
+
+enum ProjectType {
+  migration
+  integration
+  custom_app
+}
+
+enum ProjectStatus {
+  not_started
+  in_progress
+  paused
+  completed
+  delivered
+  archived
+}
+
+enum AttributionParty {
+  mako
+  rl
+  client_via_rl
+  product_bug
+  other
+}
+
+enum RequestedParty {
+  mako
+  rl
+  client_via_rl
+}
+
+enum RootCauseParty {
+  mako
+  rl
+  client_via_rl
+  product_bug
+}
+
+enum MilestoneStatus {
+  yet_to_start
+  ongoing
+  submitted
+  revision_requested
+  completed
+}
+
+enum ApprovalStatus {
+  not_required
+  pending
+  approved
+  rejected
+}
+
+enum SubtaskStatus {
+  not_started
+  in_progress
+  blocked
+  done
+}
+
+enum DependencyType {
+  credential
+  source_sheet
+  approval
+  clarification
+  confirmation
+  other
+}
+
+enum DependencyStatus {
+  awaiting
+  received
+  overdue
+}
+
+enum ApprovalRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum TicketType {
+  product_bug
+  api_change
+  escalation
+  clarification
+  dependency
+  requisites
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum TicketStatus {
+  open
+  in_review
+  resolved
+  workaround_applied
+  closed
+}
+
+enum ChangeRequestStatus {
+  draft
+  pending_rl_approval
+  approved
+  rejected
+}
+
+enum MomStatus {
+  pending
+  submitted
+  late
+  overdue
+}
+
+enum MomLateReason {
+  genuine_miss
+  rl_delay_compressed_timeline
+  other
+}
+
+// ---------------------------------------------------------------------------
+// USERS & AUTH  (§2.1)
+// ---------------------------------------------------------------------------
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  passwordHash   String
+  name           String
+  role           UserRole
+  avatarUrl      String?
+  isActive       Boolean   @default(true) // false = deactivated (login revoked, name preserved on history)
+  deactivatedAt  DateTime?
+  deactivatedBy  String? // scalar actor stamp
+  lastLoginAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Navigated relations (opposite sides declared on the related models)
+  projectsLed          Project[]             @relation("ProjectLead")
+  rlConsultantOf       ProjectRlConsultant[]
+  resourceOf           ProjectResource[]
+  milestonesOwned      Milestone[]           @relation("MilestoneOwner")
+  subtasksAssigned     Subtask[]             @relation("SubtaskAssignee")
+  ticketsRaised        Ticket[]              @relation("TicketRaisedBy")
+  ticketsAssigned      Ticket[]              @relation("TicketAssignedTo")
+  comments             Comment[]             @relation("CommentAuthor")
+  meetingsOrganized    Meeting[]             @relation("MeetingOrganizer")
+  meetingAttendance    MeetingAttendee[]
+  notifications        Notification[]        @relation("NotificationRecipient")
+  approvalsRequested   ApprovalRequest[]     @relation("ApprovalRequestedBy")
+  changeRequestsRaised ChangeRequest[]       @relation("ChangeRequestRaisedBy")
+  attachmentsUploaded  Attachment[]          @relation("AttachmentUploadedBy")
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// PROJECTS  (§2.2)
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(uuid())
+  title       String
+  description String?
+  type        ProjectType
+  status      ProjectStatus @default(not_started)
+
+  // The THREE timelines — core to the entire platform
+  rlCommittedDeadline  DateTime // what RL promised the client (fixed)
+  makoInternalDeadline DateTime? // Mako's own working target (adjustable)
+  actualCompletionDate DateTime? // when it actually finished
+
+  rlProjectId         String?
+  templateSnapshotId  String? // frozen lifecycle_templates.id at creation
+
+  projectLeadId String? // Sub-admin (PM)
+  projectLead   User?   @relation("ProjectLead", fields: [projectLeadId], references: [id])
+  createdBy     String // scalar actor stamp (immutable)
+
+  // Pause tracking (current state; full history in PauseHistory)
+  currentPauseReasonCategory AttributionParty?
+  currentPauseReasonComment  String?
+  pausedAt                   DateTime?
+
+  isArchived Boolean   @default(false)
+  archivedAt DateTime?
+  archivedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Children
+  rlConsultants  ProjectRlConsultant[]
+  resources      ProjectResource[]
+  milestones     Milestone[]
+  dependencies   Dependency[]
+  approvals      ApprovalRequest[]
+  changeRequests ChangeRequest[]
+  meetings       Meeting[]
+  comments       Comment[]
+  attachments    Attachment[]
+  ticketLinks    TicketProject[]
+  pauseHistory   PauseHistory[]
+  notifications  Notification[]
+
+  @@index([status])
+  @@index([type])
+  @@index([projectLeadId])
+  @@index([isArchived])
+  @@map("projects")
+}
+
+model ProjectRlConsultant {
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String // must be role = rl_user (enforced app-side)
+  user       User     @relation(fields: [userId], references: [id])
+  assignedAt DateTime @default(now())
+  assignedBy String
+
+  @@id([projectId, userId])
+  @@map("project_rl_consultants")
+}
+
+model ProjectResource {
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String // must be role = resource (enforced app-side)
+  user       User     @relation(fields: [userId], references: [id])
+  assignedAt DateTime @default(now())
+  assignedBy String
+
+  @@id([projectId, userId])
+  @@map("project_resources")
+}
+
+// ---------------------------------------------------------------------------
+// LIFECYCLE TEMPLATES  (§2.3)
+// ---------------------------------------------------------------------------
+
+model LifecycleTemplate {
+  id          String      @id @default(uuid())
+  projectType ProjectType
+  version     Int         @default(1)
+  isActive    Boolean     @default(true) // only one active per type
+  // ordered array of { name, order, description, exitCriteria }
+  stages      Json
+  createdBy   String?
+  createdAt   DateTime    @default(now())
+
+  @@index([projectType, isActive])
+  @@map("lifecycle_templates")
+}
+
+// ---------------------------------------------------------------------------
+// MILESTONES & SUBTASKS  (§2.4)
+// ---------------------------------------------------------------------------
+
+model Milestone {
+  id          String  @id @default(uuid())
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentStage String? // which template stage this belongs to
+  name        String
+  description String?
+
+  ownerId String? // assigned Mako resource
+  owner   User?   @relation("MilestoneOwner", fields: [ownerId], references: [id])
+
+  dueDate DateTime?
+  status  MilestoneStatus @default(yet_to_start)
+
+  // RL approval status (separate from milestone work status)
+  approvalStatus       ApprovalStatus @default(not_required)
+  approvedBy           String?
+  approvedAt           DateTime?
+  approvalComment      String?
+  approvalSlaStartedAt DateTime?
+
+  meetingLink String?
+
+  sortOrder Int      @default(0)
+  isArchived Boolean @default(false)
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subtasks     Subtask[]
+  dependencies Dependency[]
+  approvals    ApprovalRequest[]
+  meetings     Meeting[]
+  comments     Comment[]
+  attachments  Attachment[]
+
+  @@index([projectId])
+  @@index([status])
+  @@map("milestones")
+}
+
+model Subtask {
+  id            String        @id @default(uuid())
+  milestoneId   String
+  milestone     Milestone     @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  assignedToId  String? // the Resource user
+  assignedTo    User?         @relation("SubtaskAssignee", fields: [assignedToId], references: [id])
+  status        SubtaskStatus @default(not_started)
+  blockedReason String? // mandatory when status = blocked (app-enforced)
+  dueDate       DateTime?
+  sortOrder     Int           @default(0)
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([milestoneId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("subtasks")
+}
+
+// ---------------------------------------------------------------------------
+// DEPENDENCIES — the core delay-tracking entity  (§2.5)
+// ---------------------------------------------------------------------------
+
+model Dependency {
+  id          String     @id @default(uuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+
+  type        DependencyType
+  description String
+
+  requestedFromParty RequestedParty
+
+  dateRequested DateTime  @default(now()) @db.Date
+  dateReceived  DateTime? @db.Date
+
+  slaThresholdDays Int // auto-filled from org SLA config, editable
+
+  status DependencyStatus @default(awaiting)
+
+  // Auto-calculated (application logic; recomputed on read/cron)
+  burnDays    Int? // BUSINESS days between requested and received (or today)
+  slaBreached Boolean @default(false)
+
+  // Mandatory root-cause tag — REQUIRED once slaBreached && status=received
+  rootCauseCategory RootCauseParty?
+  rootCauseComment  String?
+
+  fulfilledBy String?
+  fulfilledAt DateTime?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@index([slaBreached])
+  @@map("dependencies")
+}
+
+// ---------------------------------------------------------------------------
+// SLA CONFIGURATION  (§2.6)
+// ---------------------------------------------------------------------------
+
+model SlaConfig {
+  id             String         @id @default(uuid())
+  dependencyType DependencyType @unique
+  thresholdDays  Int
+  approvalSlaDays Int           @default(3)
+  createdBy      String?
+  updatedAt      DateTime       @updatedAt
+
+  @@map("sla_configs")
+}
+
+// ---------------------------------------------------------------------------
+// APPROVAL REQUESTS  (§2.7)
+// ---------------------------------------------------------------------------
+
+model ApprovalRequest {
+  id          String    @id @default(uuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id])
+
+  requestedById  String
+  requestedBy    User     @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  requestedAt    DateTime @default(now())
+  requestComment String // mandatory
+
+  status          ApprovalRequestStatus @default(pending)
+  decidedBy       String? // the RL user who acted (scalar stamp)
+  decidedAt       DateTime?
+  decisionComment String? // MANDATORY on approve/reject (app-enforced)
+
+  slaDeadline DateTime? // requested_at + org SLA config (absolute, stored)
+  slaBreached Boolean   @default(false)
+  escalated   Boolean   @default(false)
+  escalatedAt DateTime?
+  escalatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@index([projectId])
+  @@index([status])
+  @@map("approval_requests")
+}
+
+// ---------------------------------------------------------------------------
+// TICKETS  (§2.8)
+// ---------------------------------------------------------------------------
+
+model Ticket {
+  id          String         @id @default(uuid())
+  title       String
+  description String
+  type        TicketType
+  priority    TicketPriority @default(medium)
+  status      TicketStatus   @default(open)
+
+  raisedById   String
+  raisedBy     User    @relation("TicketRaisedBy", fields: [raisedById], references: [id])
+  assignedToId String?
+  assignedTo   User?   @relation("TicketAssignedTo", fields: [assignedToId], references: [id])
+
+  // dependency-type ticket date tracking
+  dateRequested   DateTime? @db.Date
+  slaExpectedDate DateTime? @db.Date
+  dateFulfilled   DateTime? @db.Date
+  burnDays        Int?
+
+  resolvedAt        DateTime?
+  resolvedBy        String?
+  resolutionComment String?
+
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  projectLinks TicketProject[]
+  comments     Comment[]
+  attachments  Attachment[]
+
+  @@index([status])
+  @@index([type])
+  @@index([assignedToId])
+  @@map("tickets")
+}
+
+model TicketProject {
+  ticketId  String
+  ticket    Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([ticketId, projectId])
+  @@map("ticket_projects")
+}
+
+// ---------------------------------------------------------------------------
+// CHANGE REQUESTS  (§2.9)
+// ---------------------------------------------------------------------------
+
+model ChangeRequest {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  scopeDelta              String
+  timelineImpactDays      Int?
+  effortImpactDescription String?
+
+  status ChangeRequestStatus @default(draft)
+
+  raisedById String
+  raisedBy   User     @relation("ChangeRequestRaisedBy", fields: [raisedById], references: [id])
+  raisedAt   DateTime @default(now())
+
+  decidedBy       String? // RL user (scalar stamp)
+  decidedAt       DateTime?
+  decisionComment String? // mandatory on approve/reject
+
+  timelineAdjusted Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@index([projectId])
+  @@index([status])
+  @@map("change_requests")
+}
+
+// ---------------------------------------------------------------------------
+// MEETINGS & MoMs  (§2.10)
+// ---------------------------------------------------------------------------
+
+model Meeting {
+  id          String     @id @default(uuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+
+  title       String
+  meetingDate DateTime
+  meetingLink String?
+
+  organizerId String
+  organizer   User   @relation("MeetingOrganizer", fields: [organizerId], references: [id])
+
+  momStatus      MomStatus @default(pending)
+  momContent     String? // rich text (Tiptap HTML)
+  momSubmittedAt DateTime?
+  momSubmittedBy String?
+  momDeadline    DateTime? // meeting_date + 24h (configurable)
+
+  momLateReasonCategory MomLateReason?
+  momLateReasonComment  String?
+
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendees   MeetingAttendee[]
+  comments    Comment[]
+  attachments Attachment[]
+
+  @@index([projectId])
+  @@index([momStatus])
+  @@map("meetings")
+}
+
+model MeetingAttendee {
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  @@id([meetingId, userId])
+  @@map("meeting_attendees")
+}
+
+// ---------------------------------------------------------------------------
+// COMMENTS (universal, threaded, never deleted)  (§2.11)
+// ---------------------------------------------------------------------------
+
+model Comment {
+  id String @id @default(uuid())
+
+  // Polymorphic parent (exactly one non-null — enforced app-side)
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId       String?
+  milestone         Milestone?       @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  ticketId          String?
+  ticket            Ticket?          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  changeRequestId   String?
+  changeRequest     ChangeRequest?   @relation(fields: [changeRequestId], references: [id], onDelete: Cascade)
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  meetingId         String?
+  meeting           Meeting?         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  parentCommentId String?
+  parentComment   Comment?  @relation("CommentThread", fields: [parentCommentId], references: [id])
+  replies         Comment[] @relation("CommentThread")
+
+  content String // rich text (Tiptap HTML)
+
+  isEdited Boolean   @default(false)
+  editedAt DateTime?
+
+  authorId String
+  author   User   @relation("CommentAuthor", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions    CommentVersion[]
+  attachments Attachment[]
+
+  @@index([projectId])
+  @@index([milestoneId])
+  @@index([ticketId])
+  @@map("comments")
+}
+
+model CommentVersion {
+  id            String   @id @default(uuid())
+  commentId     String
+  comment       Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  content       String // the OLD content before edit
+  editedAt      DateTime @default(now())
+  versionNumber Int
+
+  @@index([commentId])
+  @@map("comment_versions")
+}
+
+// ---------------------------------------------------------------------------
+// ATTACHMENTS / DOCUMENTS  (§2.12)
+// ---------------------------------------------------------------------------
+
+model Attachment {
+  id String @id @default(uuid())
+
+  // Polymorphic parent
+  projectId         String?
+  project           Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId       String?
+  milestone         Milestone?       @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  ticketId          String?
+  ticket            Ticket?          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  changeRequestId   String?
+  changeRequest     ChangeRequest?   @relation(fields: [changeRequestId], references: [id], onDelete: Cascade)
+  approvalRequestId String?
+  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  meetingId         String?
+  meeting           Meeting?         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  commentId         String?
+  comment           Comment?         @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  filename String
+  fileKey  String // S3 key
+  fileSize BigInt
+  mimeType String
+
+  isCurrent  Boolean @default(true)
+  replacesId String?
+
+  uploadedById String
+  uploadedBy   User     @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@index([projectId])
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG — tamper-evident, INSERT-ONLY, hash-chained  (§2.13)
+// Fully snake_case @map'd: raw SQL trigger + verifier target these names.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id             String @id @default(uuid())
+  sequenceNumber BigInt @unique @default(autoincrement()) @map("sequence_number")
+
+  // actor fields are SNAPSHOTS, not FKs — preserved even if user hard-deleted
+  actorId    String  @map("actor_id")
+  actorEmail String  @map("actor_email")
+  actorRole  String  @map("actor_role")
+  actorIp    String? @map("actor_ip") @db.Inet
+  sessionId  String? @map("session_id")
+
+  action     String @map("action")
+  entityType String @map("entity_type")
+  entityId   String @map("entity_id")
+
+  beforeValue Json? @map("before_value")
+  afterValue  Json? @map("after_value")
+  metadata    Json? @map("metadata")
+
+  // HASH CHAIN for tamper evidence
+  previousHash String @map("previous_hash")
+  rowHash      String @map("row_hash")
+
+  timestamp DateTime @default(now()) @map("timestamp")
+
+  // Tombstone flag (for hard-delete records)
+  isTombstone         Boolean @default(false) @map("is_tombstone")
+  tombstoneReason     String? @map("tombstone_reason")
+  tombstoneTargetType String? @map("tombstone_target_type")
+  tombstoneTargetId   String? @map("tombstone_target_id")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([action])
+  @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS  (§2.14)
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id          String @id @default(uuid())
+  recipientId String
+  recipient   User   @relation("NotificationRecipient", fields: [recipientId], references: [id])
+
+  type  String
+  title String
+  body  String?
+
+  entityType String?
+  entityId   String?
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
+
+  emailSent   Boolean   @default(false)
+  emailSentAt DateTime?
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([recipientId, isRead])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// PAUSE HISTORY  (§2.15)
+// ---------------------------------------------------------------------------
+
+model PauseHistory {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  pausedAt  DateTime
+  resumedAt DateTime? // null if still paused
+
+  reasonCategory AttributionParty
+  reasonComment  String
+
+  pauseDurationDays Int? // auto-calculated BUSINESS days on resume
+
+  pausedBy  String
+  resumedBy String?
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("pause_history")
+}

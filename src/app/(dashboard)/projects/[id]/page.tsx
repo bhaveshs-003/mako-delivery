@@ -1,0 +1,161 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { getCurrentUser } from "@/lib/session";
+import { prisma } from "@/lib/db";
+import { projectScopeWhere } from "@/lib/permissions";
+import { PROJECT_TYPE_LABELS } from "@/lib/constants";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { UserAvatar } from "@/components/shared/UserAvatar";
+import { formatDate } from "@/lib/utils";
+
+const TABS = [
+  "Overview",
+  "Lifecycle & Milestones",
+  "Dependencies",
+  "Approvals",
+  "Tickets",
+  "Change Requests",
+  "MoMs",
+  "Comments",
+  "Documents",
+];
+
+export default async function ProjectDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  // Scope is enforced in the query: a user cannot load a project outside their
+  // assignments even by guessing the id (spec §3.2).
+  const project = await prisma.project.findFirst({
+    where: { id: params.id, ...projectScopeWhere(user) },
+    include: {
+      projectLead: { select: { name: true, isActive: true } },
+      rlConsultants: {
+        select: { user: { select: { name: true, isActive: true } } },
+      },
+    },
+  });
+
+  if (!project) notFound();
+
+  const now = new Date();
+  const pastDeadline =
+    !project.actualCompletionDate && now > project.rlCommittedDeadline;
+
+  return (
+    <div className="space-y-6">
+      <Link
+        href="/projects"
+        className="inline-flex items-center gap-1 text-sm text-slate hover:text-navy"
+      >
+        <ArrowLeft className="h-4 w-4" /> Back to Projects
+      </Link>
+
+      {/* Project header (spec §5.3) */}
+      <div className="rounded-lg border border-border bg-surface p-6 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="mb-1 flex items-center gap-2">
+              <span className="rounded bg-bg px-2 py-0.5 text-xs font-medium text-slate">
+                {PROJECT_TYPE_LABELS[project.type]}
+              </span>
+              <StatusBadge status={project.status} />
+            </div>
+            <h1 className="text-2xl font-bold text-navy">{project.title}</h1>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate">
+              {project.projectLead && (
+                <span className="inline-flex items-center gap-1.5">
+                  Lead:
+                  <UserAvatar
+                    name={project.projectLead.name}
+                    deactivated={!project.projectLead.isActive}
+                    size="sm"
+                  />
+                  {project.projectLead.name}
+                </span>
+              )}
+              {project.rlConsultants.length > 0 && (
+                <span>
+                  · RL: {project.rlConsultants.map((c) => c.user.name).join(", ")}
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {/* The THREE timelines */}
+        <div className="mt-5 grid grid-cols-2 gap-4 rounded-md border border-border bg-bg p-4 sm:grid-cols-4">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate">
+              RL Deadline
+            </p>
+            <p
+              className={`text-sm font-semibold ${pastDeadline ? "text-danger" : "text-navy"}`}
+            >
+              {formatDate(project.rlCommittedDeadline)}
+            </p>
+            <p className="text-[10px] text-slate">fixed</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate">
+              Mako Target
+            </p>
+            <p className="text-sm font-semibold text-navy">
+              {formatDate(project.makoInternalDeadline)}
+            </p>
+            <p className="text-[10px] text-slate">adjustable</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate">
+              Actual Completion
+            </p>
+            <p className="text-sm font-semibold text-navy">
+              {formatDate(project.actualCompletionDate)}
+            </p>
+            <p className="text-[10px] text-slate">auto-calc</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate">
+              RL Project ID
+            </p>
+            <p className="text-sm font-semibold text-navy">
+              {project.rlProjectId ?? "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab bar (rendered; content lands in feature phases) */}
+      <div className="border-b border-border">
+        <div className="flex flex-wrap gap-4 text-sm">
+          {TABS.map((tab, i) => (
+            <span
+              key={tab}
+              className={`cursor-default border-b-2 pb-2 ${
+                i === 0
+                  ? "border-navy font-medium text-navy"
+                  : "border-transparent text-slate"
+              }`}
+            >
+              {tab}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {project.description && (
+        <p className="text-sm text-slate">{project.description}</p>
+      )}
+
+      <div className="rounded-lg border border-dashed border-border bg-surface px-6 py-12 text-center text-sm text-slate">
+        Tab content (milestones, dependencies, approvals, tickets, MoMs,
+        comments, documents) is delivered in Phases 3–6 of the build plan.
+      </div>
+    </div>
+  );
+}

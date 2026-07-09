@@ -3,10 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { projectScopeWhere } from "@/lib/permissions";
+import { projectScopeWhere, can, canActOnProject } from "@/lib/permissions";
 import { PROJECT_TYPE_LABELS } from "@/lib/constants";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { ProjectActions } from "@/components/projects/ProjectActions";
 import { formatDate } from "@/lib/utils";
 
 const TABS = [
@@ -36,12 +37,17 @@ export default async function ProjectDetailPage({
     include: {
       projectLead: { select: { name: true, isActive: true } },
       rlConsultants: {
-        select: { user: { select: { name: true, isActive: true } } },
+        select: { userId: true, user: { select: { name: true, isActive: true } } },
       },
+      resources: { select: { userId: true } },
     },
   });
 
   if (!project) notFound();
+
+  const canManage =
+    can(user.role, "project.edit") && canActOnProject(user, project);
+  const canArchive = can(user.role, "project.archive");
 
   const now = new Date();
   const pastDeadline =
@@ -66,7 +72,14 @@ export default async function ProjectDetailPage({
               </span>
               <StatusBadge status={project.status} />
             </div>
-            <h1 className="text-2xl font-bold text-navy">{project.title}</h1>
+            <h1 className="text-2xl font-bold text-navy">
+              {project.title}
+              {project.isArchived && (
+                <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 align-middle text-xs font-medium text-gray-500">
+                  Archived
+                </span>
+              )}
+            </h1>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate">
               {project.projectLead && (
                 <span className="inline-flex items-center gap-1.5">
@@ -86,7 +99,22 @@ export default async function ProjectDetailPage({
               )}
             </p>
           </div>
+          <ProjectActions
+            projectId={project.id}
+            status={project.status}
+            canManage={canManage}
+            canArchive={canArchive}
+            isArchived={project.isArchived}
+          />
         </div>
+
+        {project.status === "paused" && project.currentPauseReasonComment && (
+          <div className="mt-4 rounded-md border-l-4 border-warning bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <span className="font-medium">Paused</span> ·{" "}
+            {project.currentPauseReasonCategory?.replace(/_/g, " ")} —{" "}
+            {project.currentPauseReasonComment}
+          </div>
+        )}
 
         {/* The THREE timelines */}
         <div className="mt-5 grid grid-cols-2 gap-4 rounded-md border border-border bg-bg p-4 sm:grid-cols-4">

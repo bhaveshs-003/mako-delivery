@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { getCurrentUser } from "@/lib/session";
@@ -8,10 +9,10 @@ import { VerifyChainButton } from "@/components/settings/VerifyChainButton";
 import { formatDate } from "@/lib/utils";
 
 const SETTINGS_SECTIONS = [
-  { name: "SLA Rules", phase: "Phase 2", desc: "Per-dependency SLA thresholds & approval turnaround." },
-  { name: "Lifecycle Templates", phase: "Phase 2", desc: "Versioned stage templates per project type." },
-  { name: "Users", phase: "Phase 2", desc: "Create, edit, deactivate users (history preserved)." },
-  { name: "Hard Delete Console", phase: "Phase 7", desc: "Irreversible deletion with mandatory tombstone." },
+  { name: "Users", href: "/settings/users", phase: "Ready", desc: "Create, edit, deactivate users (history preserved)." },
+  { name: "SLA Rules", href: "/settings/sla", phase: "Ready", desc: "Per-dependency SLA thresholds & approval turnaround." },
+  { name: "Lifecycle Templates", href: null, phase: "Phase 2", desc: "Versioned stage templates per project type." },
+  { name: "Hard Delete Console", href: null, phase: "Phase 7", desc: "Irreversible deletion with mandatory tombstone." },
 ];
 
 export default async function SettingsPage() {
@@ -33,15 +34,28 @@ export default async function SettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {SETTINGS_SECTIONS.map((s) => (
-          <Card key={s.name} className="p-4">
-            <p className="text-sm font-semibold text-navy">{s.name}</p>
-            <p className="mt-1 text-xs text-slate">{s.desc}</p>
-            <span className="mt-3 inline-block rounded-full bg-bg px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate">
-              {s.phase}
-            </span>
-          </Card>
-        ))}
+        {SETTINGS_SECTIONS.map((s) => {
+          const inner = (
+            <Card className={`p-4 ${s.href ? "cursor-pointer transition-shadow hover:shadow-md" : ""}`}>
+              <p className="text-sm font-semibold text-navy">{s.name}</p>
+              <p className="mt-1 text-xs text-slate">{s.desc}</p>
+              <span
+                className={`mt-3 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                  s.phase === "Ready" ? "bg-green-50 text-success" : "bg-bg text-slate"
+                }`}
+              >
+                {s.phase}
+              </span>
+            </Card>
+          );
+          return s.href ? (
+            <Link key={s.name} href={s.href}>
+              {inner}
+            </Link>
+          ) : (
+            <div key={s.name}>{inner}</div>
+          );
+        })}
       </div>
 
       {/* Audit Log viewer — LIVE (spec §5.7) */}

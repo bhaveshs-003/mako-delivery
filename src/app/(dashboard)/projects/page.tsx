@@ -8,8 +8,11 @@ import { PROJECT_TYPE_LABELS } from "@/lib/constants";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { CreateProjectForm } from "@/components/forms/CreateProjectForm";
+import { ProjectsFilters } from "@/components/projects/ProjectsFilters";
 import { formatDate } from "@/lib/utils";
 import { FolderKanban } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 
 const HEALTH_DOT: Record<string, string> = {
   on_track: "bg-success",
@@ -17,20 +20,38 @@ const HEALTH_DOT: Record<string, string> = {
   delayed: "bg-danger",
 };
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: { type?: string; status?: string; q?: string; archived?: string };
+}) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role === "resource") redirect("/tasks");
 
+  const canCreate = user.role === "super_admin" || user.role === "admin";
+  const showArchived = searchParams.archived === "1";
+
+  const filters: Prisma.ProjectWhereInput = {
+    ...projectScopeWhere(user),
+    ...(showArchived ? {} : { isArchived: false }),
+    ...(searchParams.type ? { type: searchParams.type as never } : {}),
+    ...(searchParams.status ? { status: searchParams.status as never } : {}),
+    ...(searchParams.q
+      ? { title: { contains: searchParams.q, mode: "insensitive" } }
+      : {}),
+  };
+
   const now = new Date();
   const projects = await prisma.project.findMany({
-    where: { ...projectScopeWhere(user), isArchived: false },
+    where: filters,
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
       title: true,
       type: true,
       status: true,
+      isArchived: true,
       rlCommittedDeadline: true,
       makoInternalDeadline: true,
       actualCompletionDate: true,
@@ -52,24 +73,35 @@ export default async function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy">
-            {user.role === "super_admin" || user.role === "admin"
-              ? "Projects"
-              : "My Projects"}
+            {canCreate ? "Projects" : "My Projects"}
           </h1>
           <p className="text-sm text-slate">
             {projects.length} project{projects.length === 1 ? "" : "s"}
           </p>
         </div>
+        {canCreate && <CreateProjectForm />}
       </div>
+
+      <ProjectsFilters />
 
       {projects.length === 0 ? (
         <EmptyState
           icon={FolderKanban}
-          title="No projects yet"
-          subtitle="Projects you lead or are assigned to will appear here."
+          title={
+            searchParams.type || searchParams.status || searchParams.q
+              ? "No results match your filters"
+              : "No projects yet"
+          }
+          subtitle={
+            searchParams.type || searchParams.status || searchParams.q
+              ? "Try clearing or adjusting the filters above."
+              : canCreate
+                ? "Create your first project to start tracking."
+                : "Projects you lead or are assigned to will appear here."
+          }
         />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-surface shadow-card">
@@ -129,12 +161,12 @@ export default async function ProjectsPage() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-border last:border-0 hover:bg-bg"
+                      className={`border-b border-border last:border-0 hover:bg-bg ${p.isArchived ? "opacity-50" : ""}`}
                     >
                       <td className="px-4 py-3">
                         <Link
                           href={`/projects/${p.id}`}
-                          className="font-medium text-navy hover:underline"
+                          className={`font-medium text-navy hover:underline ${p.isArchived ? "line-through" : ""}`}
                         >
                           {p.title}
                         </Link>

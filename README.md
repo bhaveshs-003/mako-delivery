@@ -98,22 +98,43 @@ row_hash = SHA256(sequence_number | actor_id | action | entity_type
 | `npm run db:reset`     | Drop, re-migrate, re-seed    |
 | `npm run audit:verify` | Verify the audit hash chain  |
 
-## Build status
+## Integrations (email & files)
 
-**Implemented (Phase 1):**
+Both work in dev with **zero configuration** (console + local-disk fallbacks)
+and switch to production providers by setting env vars:
 
-- Full Prisma schema — all 22 tables, enums, relations, snake_case audit log
-- INSERT-ONLY audit-log trigger + SHA-256 hash chain + verifier (CLI + API + UI)
-- NextAuth credentials auth, role in JWT, immediate-deactivation enforcement
-- Server-side RBAC: route matrix, action matrix, query scoping
-- App shell (role-aware sidebar, header, breadcrumbs)
-- Role-aware dashboard with real metrics + delay-attribution donut
-- Scoped Projects list + project-detail header (three timelines)
-- Live Audit Log viewer (per-row + full-chain verification)
-- Seed data: 15 users, 6 projects, dependencies (some SLA-breached), approvals,
-  a multi-project ticket, a change request, pauses, MoMs
+- **Email** — set `RESEND_API_KEY` + `EMAIL_FROM`. Until then, emails are logged
+  to the server console. All notifications route through `src/lib/notifications.ts`.
+- **Files** — set `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` / `S3_BUCKET`
+  (+ `S3_ENDPOINT` for MinIO). Until then, uploads go to `./.uploads` and stream
+  via `/api/files/[key]`. In production, downloads use presigned URLs.
 
-**Planned (Phases 2–7):** milestones/subtasks UI, dependency logging UI,
-approval/ticket/CR/MoM/comment engines, full reports + PDF/CSV export,
-notifications + email, hard-delete console. See the build plan in the project
-spec (§11).
+## Build status — all phases implemented
+
+- **Foundation** — schema (22 tables), INSERT-ONLY audit trigger, SHA-256 hash
+  chain + verifier (CLI/API/UI), NextAuth + role JWT, server-side RBAC (route +
+  action matrices + query scoping), app shell, role dashboards.
+- **Entities** — Projects CRUD (template snapshot + auto-milestones, archive,
+  start/pause/resume/complete), list filters, Users CRUD (deactivation preserves
+  history), SLA config editor.
+- **Lifecycle & Dependencies** — milestones/subtasks (blocked-reason flow,
+  submit guard), the dependency engine (business-day burn, SLA flagging,
+  mandatory root-cause on breach), lifecycle + dependencies tabs.
+- **Approvals & Tickets** — approval SLA (no restart on reject, self-approval
+  blocked, mandatory comment), multi-project tickets with RL response/escalate/
+  close rules.
+- **CR / Comments / Documents / MoM** — change requests with timeline
+  auto-adjust; threaded comments with edit-history (never deleted); S3-backed
+  documents; meetings with 24h MoM deadline + late-reason attribution.
+- **Reports** — delay-attribution report (stacked bar + CSV export, export
+  gated to Admins), per-project post-mortem (print/Save-as-PDF evidence export).
+- **Notifications & admin** — in-app notification feed + unread bell, global
+  search, and the Hard-Delete Console (tombstone written before deletion in the
+  same transaction).
+
+Every state-changing action appends to the tamper-evident audit log; the chain
+is verified after each phase.
+
+**Remaining polish (not blocking):** Tiptap rich-text for comments/MoM,
+lifecycle-template editor UI, resource-utilization heatmap, trend charts,
+per-role dashboard variants, and a full mobile responsive pass.

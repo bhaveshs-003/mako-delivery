@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Search } from "lucide-react";
 import { Fragment } from "react";
+import { NotificationBell } from "@/components/layout/NotificationBell";
+import { GlobalSearch } from "@/components/layout/GlobalSearch";
 
 // Derive breadcrumbs from the pathname (spec §4.1). Detail IDs are shortened.
 function useCrumbs() {
@@ -48,21 +49,8 @@ export function Header() {
       </nav>
 
       <div className="ml-auto flex items-center gap-3">
-        <div className="relative hidden md:block">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate" />
-          <input
-            type="search"
-            placeholder="Search…"
-            className="h-9 w-56 rounded-md border border-border bg-bg pl-8 pr-3 text-sm text-navy placeholder:text-slate focus:border-border-strong focus:outline-none"
-          />
-        </div>
-        <Link
-          href="/notifications"
-          className="relative flex h-9 w-9 items-center justify-center rounded-md text-slate hover:bg-bg hover:text-navy"
-          aria-label="Notifications"
-        >
-          <Bell className="h-5 w-5" />
-        </Link>
+        <GlobalSearch />
+        <NotificationBell />
       </div>
     </header>
   );

@@ -11,8 +11,8 @@ import { formatDate } from "@/lib/utils";
 const SETTINGS_SECTIONS = [
   { name: "Users", href: "/settings/users", phase: "Ready", desc: "Create, edit, deactivate users (history preserved)." },
   { name: "SLA Rules", href: "/settings/sla", phase: "Ready", desc: "Per-dependency SLA thresholds & approval turnaround." },
-  { name: "Lifecycle Templates", href: null, phase: "Phase 2", desc: "Versioned stage templates per project type." },
-  { name: "Hard Delete Console", href: null, phase: "Phase 7", desc: "Irreversible deletion with mandatory tombstone." },
+  { name: "Lifecycle Templates", href: null, phase: "Planned", desc: "Versioned stage templates per project type." },
+  { name: "Hard Delete Console", href: "/settings/hard-delete", phase: "Ready", desc: "Irreversible deletion with mandatory tombstone." },
 ];
 
 export default async function SettingsPage() {

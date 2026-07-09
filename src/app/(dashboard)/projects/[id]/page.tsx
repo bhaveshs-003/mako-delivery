@@ -11,6 +11,8 @@ import { ProjectActions } from "@/components/projects/ProjectActions";
 import { DependenciesTab } from "@/components/projects/tabs/DependenciesTab";
 import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
+import { ApprovalsTab } from "@/components/projects/tabs/ApprovalsTab";
+import { TicketsTab } from "@/components/projects/tabs/TicketsTab";
 import { PhasePlaceholder } from "@/components/shared/PhasePlaceholder";
 import { formatDate } from "@/lib/utils";
 
@@ -193,8 +195,15 @@ export default async function ProjectDetailPage({
       {activeTab === "overview" && <OverviewTab projectId={project.id} description={project.description} />}
       {activeTab === "lifecycle" && <LifecycleTab projectId={project.id} canManage={canManage} userId={user.id} userRole={user.role} />}
       {activeTab === "dependencies" && <DependenciesTab projectId={project.id} role={user.role} canManage={canManage} />}
-      {activeTab === "approvals" && <PhasePlaceholder title="Approvals" phase="Phase 4" description="Approval requests with SLA tracking and mandatory decision comments." />}
-      {activeTab === "tickets" && <PhasePlaceholder title="Tickets" phase="Phase 4" description="Multi-project tickets with RL response flow." />}
+      {activeTab === "approvals" && (
+        <ApprovalsTab
+          projectId={project.id}
+          userId={user.id}
+          canRequest={can(user.role, "approval.request") && canManage}
+          canDecide={can(user.role, "approval.decide") && canActOnProject(user, project)}
+        />
+      )}
+      {activeTab === "tickets" && <TicketsTab projectId={project.id} user={user} />}
       {activeTab === "change-requests" && <PhasePlaceholder title="Change Requests" phase="Phase 5" description="Scope-change gate with timeline auto-adjustment." />}
       {activeTab === "moms" && <PhasePlaceholder title="MoMs" phase="Phase 5" description="Meeting minutes with deadline enforcement and late-reason attribution." />}
       {activeTab === "comments" && <PhasePlaceholder title="Comments" phase="Phase 5" description="Threaded comments with edit history and @mentions." />}

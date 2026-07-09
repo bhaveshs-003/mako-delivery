@@ -118,6 +118,85 @@ export const patchSubtaskSchema = z
     path: ["blockedReason"],
   });
 
+// ── Approvals (Phase 4) ─────────────────────────────────────────────────────
+export const createApprovalSchema = z.object({
+  projectId: uuid,
+  milestoneId: uuid,
+  requestComment: z.string().min(1, "A request comment is required").max(2000),
+});
+
+export const decideApprovalSchema = z.object({
+  action: z.enum(["approve", "reject", "escalate"]),
+  // Mandatory on approve/reject (spec §2.7); optional on escalate.
+  decisionComment: z.string().max(2000).optional(),
+});
+
+// ── Tickets (Phase 4) ───────────────────────────────────────────────────────
+export const createTicketSchema = z.object({
+  title: z.string().min(1).max(500),
+  description: z.string().min(1).max(5000),
+  type: z.enum(["product_bug", "api_change", "escalation", "clarification", "dependency", "requisites"]),
+  priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  projectIds: z.array(uuid).min(1, "A ticket must link to at least one project"),
+  assignedToId: uuid.optional().nullable(),
+});
+
+export const patchTicketSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("respond"),
+    status: z.enum(["in_review", "resolved", "workaround_applied"]),
+    comment: z.string().min(1, "A comment is required when responding").max(2000),
+  }),
+  z.object({ action: z.literal("escalate"), comment: z.string().max(2000).optional() }),
+  z.object({ action: z.literal("close"), comment: z.string().max(2000).optional() }),
+]);
+
+// ── Change Requests (Phase 5) ───────────────────────────────────────────────
+export const createChangeRequestSchema = z.object({
+  projectId: uuid,
+  scopeDelta: z.string().min(1).max(5000),
+  timelineImpactDays: z.number().int().min(0).max(365).optional().nullable(),
+  effortImpactDescription: z.string().max(2000).optional(),
+});
+
+export const decideChangeRequestSchema = z.object({
+  action: z.enum(["approve", "reject"]),
+  decisionComment: z.string().min(1, "A decision comment is required").max(2000),
+});
+
+// ── Meetings & MoM (Phase 5) ────────────────────────────────────────────────
+export const createMeetingSchema = z.object({
+  projectId: uuid,
+  title: z.string().min(1).max(500),
+  meetingDate: z.coerce.date(),
+  meetingLink: z.string().max(1000).optional(),
+  milestoneId: uuid.optional().nullable(),
+  attendeeIds: z.array(uuid).default([]),
+});
+
+export const submitMomSchema = z.object({
+  content: z.string().min(1, "MoM content is required"),
+  lateReasonCategory: z.enum(["genuine_miss", "rl_delay_compressed_timeline", "other"]).optional(),
+  lateReasonComment: z.string().max(2000).optional(),
+});
+
+// ── Comments (Phase 5) ──────────────────────────────────────────────────────
+export const createCommentSchema = z.object({
+  content: z.string().min(1).max(10000),
+  parentCommentId: uuid.optional().nullable(),
+  // exactly one parent entity
+  projectId: uuid.optional(),
+  milestoneId: uuid.optional(),
+  ticketId: uuid.optional(),
+  changeRequestId: uuid.optional(),
+  approvalRequestId: uuid.optional(),
+  meetingId: uuid.optional(),
+});
+
+export const editCommentSchema = z.object({
+  content: z.string().min(1).max(10000),
+});
+
 // ── SLA config (Phase 2) ────────────────────────────────────────────────────
 export const upsertSlaSchema = z.object({
   dependencyType: z.enum([

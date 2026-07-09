@@ -61,6 +61,63 @@ export const patchUserSchema = z.object({
     .optional(),
 });
 
+// ── Dependencies (Phase 3) ──────────────────────────────────────────────────
+export const createDependencySchema = z.object({
+  projectId: uuid,
+  milestoneId: uuid.optional().nullable(),
+  type: z.enum(["credential", "source_sheet", "approval", "clarification", "confirmation", "other"]),
+  description: z.string().min(1, "Description is required").max(2000),
+  requestedFromParty: z.enum(["mako", "rl", "client_via_rl"]),
+  dateRequested: z.coerce.date(),
+  slaThresholdDays: z.number().int().min(0).max(365),
+});
+
+export const markDependencySchema = z.object({
+  action: z.enum(["receive", "fulfill"]),
+  dateReceived: z.coerce.date(),
+  // Required by the API only when the dependency is SLA-breached (spec §2.5).
+  rootCauseCategory: z.enum(["mako", "rl", "client_via_rl", "product_bug"]).optional(),
+  rootCauseComment: z.string().max(2000).optional(),
+});
+
+// ── Milestones & subtasks (Phase 3) ─────────────────────────────────────────
+export const createMilestoneSchema = z.object({
+  projectId: uuid,
+  name: z.string().min(1).max(500),
+  description: z.string().max(2000).optional(),
+  parentStage: z.string().max(255).optional(),
+  ownerId: uuid.optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+});
+
+export const patchMilestoneSchema = z.object({
+  action: z.enum(["edit", "status"]),
+  name: z.string().min(1).max(500).optional(),
+  description: z.string().max(2000).optional(),
+  ownerId: uuid.optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+  status: z
+    .enum(["yet_to_start", "ongoing", "submitted", "revision_requested", "completed"])
+    .optional(),
+});
+
+export const createSubtaskSchema = z.object({
+  milestoneId: uuid,
+  title: z.string().min(1).max(500),
+  assignedToId: uuid.optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+});
+
+export const patchSubtaskSchema = z
+  .object({
+    status: z.enum(["not_started", "in_progress", "blocked", "done"]),
+    blockedReason: z.string().max(2000).optional(),
+  })
+  .refine((d) => d.status !== "blocked" || (d.blockedReason && d.blockedReason.trim().length > 0), {
+    message: "A reason is required when marking a subtask blocked",
+    path: ["blockedReason"],
+  });
+
 // ── SLA config (Phase 2) ────────────────────────────────────────────────────
 export const upsertSlaSchema = z.object({
   dependencyType: z.enum([

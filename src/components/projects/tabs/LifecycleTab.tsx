@@ -6,6 +6,8 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { SubtaskStatusControl } from "@/components/projects/SubtaskStatusControl";
 import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusControl";
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
+import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
+import { getDownloadUrl } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
 import { ListChecks, AlertTriangle } from "lucide-react";
 
@@ -28,6 +30,39 @@ export async function LifecycleTab({
       subtasks: { orderBy: { sortOrder: "asc" }, include: { assignedTo: { select: { name: true } } } },
     },
   });
+
+  // Per-milestone comments, attachments, and the project's assignable resources
+  // (used for owner assignment + comment tagging).
+  const [commentRows, attachmentRows, projectResources] = await Promise.all([
+    prisma.comment.findMany({
+      where: { milestoneId: { in: milestones.map((m) => m.id) } },
+      orderBy: { createdAt: "asc" },
+      include: { author: { select: { name: true } } },
+    }),
+    prisma.attachment.findMany({
+      where: { milestoneId: { in: milestones.map((m) => m.id) }, isCurrent: true },
+      orderBy: { createdAt: "desc" },
+      include: { uploadedBy: { select: { name: true } } },
+    }),
+    prisma.projectResource.findMany({
+      where: { projectId },
+      include: { user: { select: { id: true, name: true } } },
+    }),
+  ]);
+
+  const resources = projectResources.map((r) => ({ id: r.user.id, name: r.user.name }));
+  const commentsByMilestone = new Map<string, typeof commentRows>();
+  for (const c of commentRows) {
+    if (!c.milestoneId) continue;
+    (commentsByMilestone.get(c.milestoneId) ?? commentsByMilestone.set(c.milestoneId, []).get(c.milestoneId)!).push(c);
+  }
+  const docsByMilestone = new Map<string, { id: string; filename: string; url: string; uploadedByName: string }[]>();
+  for (const a of attachmentRows) {
+    if (!a.milestoneId) continue;
+    const url = await getDownloadUrl(a.fileKey);
+    const list = docsByMilestone.get(a.milestoneId) ?? docsByMilestone.set(a.milestoneId, []).get(a.milestoneId)!;
+    list.push({ id: a.id, filename: a.filename, url, uploadedByName: a.uploadedBy.name });
+  }
 
   // Group milestones by their parent template stage.
   const stages = new Map<string, typeof milestones>();
@@ -121,6 +156,22 @@ export async function LifecycleTab({
                           })}
                         </div>
                       )}
+
+                      <MilestoneDetail
+                        milestoneId={m.id}
+                        ownerId={m.ownerId}
+                        canManage={canManage}
+                        resources={resources}
+                        comments={(commentsByMilestone.get(m.id) ?? []).map((c) => ({
+                          id: c.id,
+                          authorId: c.authorId,
+                          authorName: c.author.name,
+                          content: c.content,
+                          createdAt: c.createdAt.toISOString(),
+                          isEdited: c.isEdited,
+                        }))}
+                        documents={docsByMilestone.get(m.id) ?? []}
+                      />
                     </div>
                   ))}
                 </div>

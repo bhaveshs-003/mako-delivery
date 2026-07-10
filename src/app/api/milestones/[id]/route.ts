@@ -4,6 +4,7 @@ import { readJson, ok, badRequest, notFound, serverError } from "@/lib/api";
 import { patchMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
+import { notify } from "@/lib/notifications";
 
 // PATCH /api/milestones/[id] — edit or change work status.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -35,6 +36,39 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     });
     if (blocked > 0)
       return badRequest(`Cannot submit: ${blocked} subtask(s) are still blocked`);
+  }
+
+  // Assign (or clear) the milestone owner — must be a resource on this project.
+  if (body.action === "assign_owner") {
+    if (body.ownerId) {
+      const isProjectResource = milestone.project.resources.some((r) => r.userId === body.ownerId);
+      if (!isProjectResource)
+        return badRequest("The owner must be a resource assigned to this project");
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const m = await tx.milestone.update({
+        where: { id: milestone.id },
+        data: { ownerId: body.ownerId ?? null },
+      });
+      await writeAudit(
+        { actor: toAuditActor(user, req), action: "milestone.assign_owner", entityType: "milestone", entityId: m.id, before: { ownerId: milestone.ownerId }, after: { ownerId: m.ownerId }, metadata: { projectId: milestone.projectId } },
+        tx
+      );
+      return m;
+    });
+    if (body.ownerId) {
+      await notify({
+        recipientId: body.ownerId,
+        type: "subtask_assigned",
+        title: `Assigned milestone: ${milestone.name}`,
+        body: `You were assigned as owner of "${milestone.name}" on ${milestone.project.title}.`,
+        entityType: "milestone",
+        entityId: milestone.id,
+        projectId: milestone.projectId,
+        deepLinkPath: `/projects/${milestone.projectId}?tab=lifecycle`,
+      });
+    }
+    return ok(updated);
   }
 
   try {

@@ -91,7 +91,7 @@ export const createMilestoneSchema = z.object({
 });
 
 export const patchMilestoneSchema = z.object({
-  action: z.enum(["edit", "status"]),
+  action: z.enum(["edit", "status", "assign_owner"]),
   name: z.string().min(1).max(500).optional(),
   description: z.string().max(2000).optional(),
   ownerId: uuid.optional().nullable(),
@@ -184,6 +184,8 @@ export const submitMomSchema = z.object({
 export const createCommentSchema = z.object({
   content: z.string().min(1).max(10000),
   parentCommentId: uuid.optional().nullable(),
+  // Users to @mention/tag on this comment (notified).
+  mentionUserIds: z.array(uuid).default([]),
   // exactly one parent entity
   projectId: uuid.optional(),
   milestoneId: uuid.optional(),

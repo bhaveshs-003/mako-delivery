@@ -4,6 +4,7 @@ import { createCommentSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { canAccessParent, singleParent, type ParentRef } from "@/lib/comment-scope";
+import { notifyMany } from "@/lib/notifications";
 
 // POST /api/comments — add a comment to a parent entity (threaded).
 export async function POST(req: Request) {
@@ -44,6 +45,32 @@ export async function POST(req: Request) {
       );
       return c;
     });
+
+    // Notify tagged users (excluding self).
+    const mentions = input.mentionUserIds.filter((id) => id !== user.id);
+    if (mentions.length > 0) {
+      // Resolve the owning project + a deep link for the notification.
+      let projectId = input.projectId;
+      let deepLinkPath = projectId ? `/projects/${projectId}?tab=comments` : undefined;
+      if (input.milestoneId) {
+        const m = await prisma.milestone.findUnique({
+          where: { id: input.milestoneId },
+          select: { projectId: true },
+        });
+        projectId = m?.projectId;
+        deepLinkPath = projectId ? `/projects/${projectId}?tab=lifecycle` : undefined;
+      }
+      await notifyMany(mentions, {
+        type: "escalation",
+        title: `${user.name} tagged you in a comment`,
+        body: input.content.slice(0, 160),
+        entityType: parent.key.replace("Id", ""),
+        entityId: parent.id,
+        projectId,
+        deepLinkPath,
+      });
+    }
+
     return ok(comment, 201);
   } catch (e) {
     return serverError(e);

@@ -9,7 +9,20 @@ import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { ListChecks, AlertTriangle } from "lucide-react";
+import { ListChecks, AlertTriangle, Check } from "lucide-react";
+
+// Small status → dot color, for the leading indicators in the hierarchy.
+const DOT: Record<string, string> = {
+  completed: "bg-success",
+  done: "bg-success",
+  ongoing: "bg-brand",
+  in_progress: "bg-brand",
+  submitted: "bg-brand",
+  revision_requested: "bg-warning",
+  blocked: "bg-danger",
+  yet_to_start: "bg-muted",
+  not_started: "bg-muted",
+};
 
 export async function LifecycleTab({
   projectId,
@@ -22,6 +35,7 @@ export async function LifecycleTab({
   userId: string;
   userRole: UserRole;
 }) {
+  const now = new Date();
   const milestones = await prisma.milestone.findMany({
     where: { projectId, isArchived: false },
     orderBy: { sortOrder: "asc" },
@@ -31,8 +45,6 @@ export async function LifecycleTab({
     },
   });
 
-  // Per-milestone comments, attachments, and the project's assignable resources
-  // (used for owner assignment + comment tagging).
   const [commentRows, attachmentRows, projectResources] = await Promise.all([
     prisma.comment.findMany({
       where: { milestoneId: { in: milestones.map((m) => m.id) } },
@@ -64,20 +76,35 @@ export async function LifecycleTab({
     list.push({ id: a.id, filename: a.filename, url, uploadedByName: a.uploadedBy.name });
   }
 
-  // Group milestones by their parent template stage.
-  const stages = new Map<string, typeof milestones>();
+  // Group milestones by their parent template stage (preserve order).
+  const stages: [string, typeof milestones][] = [];
+  const stageIndex = new Map<string, number>();
   for (const m of milestones) {
     const key = m.parentStage ?? "Ungrouped";
-    if (!stages.has(key)) stages.set(key, []);
-    stages.get(key)!.push(m);
+    if (!stageIndex.has(key)) {
+      stageIndex.set(key, stages.length);
+      stages.push([key, []]);
+    }
+    stages[stageIndex.get(key)!][1].push(m);
   }
+
+  const doneMilestones = milestones.filter((m) => m.status === "completed").length;
+  const overallPct = milestones.length ? Math.round((doneMilestones / milestones.length) * 100) : 0;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-navy">Lifecycle & Milestones</h2>
-          <p className="text-sm text-slate">{milestones.length} milestones</p>
+      {/* Header + overall progress */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-[220px] flex-1">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-ink">Lifecycle &amp; Milestones</h2>
+            <span className="tabular text-xs font-medium text-ink-2">
+              {doneMilestones}/{milestones.length} complete
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+            <div className="h-full rounded-full bg-success transition-all" style={{ width: `${overallPct}%` }} />
+          </div>
         </div>
         {canManage && <AddMilestoneForm projectId={projectId} />}
       </div>
@@ -85,100 +112,154 @@ export async function LifecycleTab({
       {milestones.length === 0 ? (
         <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones or load them from the project's lifecycle template." />
       ) : (
-        <div className="space-y-4">
-          {Array.from(stages.entries()).map(([stage, list]) => {
-            const allDone = list.every((m) => m.status === "completed");
+        <ol className="mt-1">
+          {stages.map(([stage, list], si) => {
+            const total = list.length;
+            const done = list.filter((m) => m.status === "completed").length;
+            const state =
+              done === total ? "complete" : list.some((m) => m.status !== "yet_to_start") ? "active" : "pending";
+            const isLast = si === stages.length - 1;
+
             return (
-              <div
-                key={stage}
-                className={`rounded-lg border-l-4 bg-surface shadow-card ${allDone ? "border-l-success" : "border-l-steel"}`}
-              >
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <h3 className="font-semibold text-navy">{stage}</h3>
-                  {allDone && <StatusBadge status="completed" />}
+              <li key={stage} className="grid grid-cols-[24px_1fr] gap-x-3">
+                {/* Rail + node */}
+                <div className="relative flex justify-center">
+                  {!isLast && (
+                    <span className="absolute left-1/2 top-6 bottom-0 w-px -translate-x-1/2 bg-line" />
+                  )}
+                  <span
+                    className={`relative z-10 mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-2xs font-semibold ring-4 ring-canvas ${
+                      state === "complete"
+                        ? "bg-success text-white"
+                        : state === "active"
+                          ? "bg-brand text-white"
+                          : "border border-line-strong bg-surface text-muted"
+                    }`}
+                  >
+                    {state === "complete" ? <Check className="h-3.5 w-3.5" /> : si + 1}
+                  </span>
                 </div>
-                <div className="divide-y divide-border">
-                  {list.map((m) => (
-                    <div key={m.id} className="px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-navy">{m.name}</span>
-                          {m.approvalStatus !== "not_required" && (
-                            <StatusBadge status={m.approvalStatus} />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {m.owner && (
-                            <span className="inline-flex items-center gap-1.5 text-xs text-slate">
-                              <UserAvatar name={m.owner.name} deactivated={!m.owner.isActive} size="sm" />
-                              {m.owner.name}
-                            </span>
-                          )}
-                          {m.dueDate && (
-                            <span className="text-xs text-slate">{formatDate(m.dueDate)}</span>
-                          )}
-                          {canManage ? (
-                            <MilestoneStatusControl milestoneId={m.id} status={m.status} />
-                          ) : (
-                            <StatusBadge status={m.status} />
-                          )}
-                        </div>
-                      </div>
 
-                      {m.subtasks.length > 0 && (
-                        <div className="mt-2 space-y-1.5 pl-4">
-                          {m.subtasks.map((s) => {
-                            const canEditSubtask =
-                              canManage || (userRole === "resource" && s.assignedToId === userId);
-                            return (
-                              <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-bg px-3 py-1.5">
-                                <div className="flex items-center gap-2">
-                                  {s.status === "blocked" && <AlertTriangle className="h-3.5 w-3.5 text-danger" />}
-                                  <span className="text-sm text-navy">{s.title}</span>
-                                  {s.assignedTo && (
-                                    <span className="text-xs text-slate">· {s.assignedTo.name}</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {s.status === "blocked" && s.blockedReason && (
-                                    <span className="max-w-[240px] truncate text-xs text-danger" title={s.blockedReason}>
-                                      {s.blockedReason}
-                                    </span>
-                                  )}
-                                  {canEditSubtask ? (
-                                    <SubtaskStatusControl subtaskId={s.id} status={s.status} />
-                                  ) : (
-                                    <StatusBadge status={s.status} />
-                                  )}
-                                </div>
+                {/* Stage content */}
+                <div className={isLast ? "pb-1" : "pb-5"}>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <h3 className="text-sm font-semibold text-ink">{stage}</h3>
+                    <span className="tabular rounded-full bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-muted">
+                      {done}/{total}
+                    </span>
+                    {state === "complete" && <StatusBadge status="completed" />}
+                  </div>
+
+                  <div className="mt-2 space-y-2">
+                    {list.map((m) => {
+                      const subDone = m.subtasks.filter((s) => s.status === "done").length;
+                      const overdue =
+                        m.dueDate && m.status !== "completed" && new Date(m.dueDate) < now;
+                      return (
+                        <div
+                          key={m.id}
+                          className="overflow-hidden rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs"
+                        >
+                          {/* Milestone header */}
+                          <div className="flex items-start justify-between gap-3 p-3">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[m.status] ?? "bg-muted"}`} />
+                                <span className="truncate text-sm font-medium text-ink">{m.name}</span>
+                                {m.approvalStatus !== "not_required" && (
+                                  <StatusBadge status={m.approvalStatus} />
+                                )}
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-4 text-2xs text-muted">
+                                {m.subtasks.length > 0 && (
+                                  <span className="tabular">{subDone}/{m.subtasks.length} subtasks</span>
+                                )}
+                                {m.dueDate && (
+                                  <span className={overdue ? "font-medium text-danger" : ""}>
+                                    Due {formatDate(m.dueDate)}
+                                  </span>
+                                )}
+                                {m.owner && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <UserAvatar name={m.owner.name} deactivated={!m.owner.isActive} size="sm" />
+                                    {m.owner.name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="shrink-0">
+                              {canManage ? (
+                                <MilestoneStatusControl milestoneId={m.id} status={m.status} />
+                              ) : (
+                                <StatusBadge status={m.status} />
+                              )}
+                            </div>
+                          </div>
 
-                      <MilestoneDetail
-                        milestoneId={m.id}
-                        ownerId={m.ownerId}
-                        canManage={canManage}
-                        resources={resources}
-                        comments={(commentsByMilestone.get(m.id) ?? []).map((c) => ({
-                          id: c.id,
-                          authorId: c.authorId,
-                          authorName: c.author.name,
-                          content: c.content,
-                          createdAt: c.createdAt.toISOString(),
-                          isEdited: c.isEdited,
-                        }))}
-                        documents={docsByMilestone.get(m.id) ?? []}
-                      />
-                    </div>
-                  ))}
+                          {/* Subtasks */}
+                          {m.subtasks.length > 0 && (
+                            <div className="space-y-0.5 border-t border-line bg-surface-2/40 px-3 py-2">
+                              {m.subtasks.map((s) => {
+                                const canEditSubtask =
+                                  canManage || (userRole === "resource" && s.assignedToId === userId);
+                                return (
+                                  <div
+                                    key={s.id}
+                                    className="flex flex-wrap items-center justify-between gap-2 rounded-md px-1.5 py-1 hover:bg-surface"
+                                  >
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[s.status] ?? "bg-muted"}`} />
+                                      {s.status === "blocked" && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" />}
+                                      <span className="truncate text-sm text-ink-2">{s.title}</span>
+                                      {s.assignedTo && (
+                                        <span className="shrink-0 text-2xs text-muted">· {s.assignedTo.name}</span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {s.status === "blocked" && s.blockedReason && (
+                                        <span className="max-w-[220px] truncate text-2xs text-danger" title={s.blockedReason}>
+                                          {s.blockedReason}
+                                        </span>
+                                      )}
+                                      {canEditSubtask ? (
+                                        <SubtaskStatusControl subtaskId={s.id} status={s.status} />
+                                      ) : (
+                                        <StatusBadge status={s.status} />
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Owner / comments / documents */}
+                          <div className="border-t border-line px-3 py-2">
+                            <MilestoneDetail
+                              milestoneId={m.id}
+                              ownerId={m.ownerId}
+                              canManage={canManage}
+                              resources={resources}
+                              comments={(commentsByMilestone.get(m.id) ?? []).map((c) => ({
+                                id: c.id,
+                                authorId: c.authorId,
+                                authorName: c.author.name,
+                                content: c.content,
+                                createdAt: c.createdAt.toISOString(),
+                                isEdited: c.isEdited,
+                              }))}
+                              documents={docsByMilestone.get(m.id) ?? []}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
     </div>
   );

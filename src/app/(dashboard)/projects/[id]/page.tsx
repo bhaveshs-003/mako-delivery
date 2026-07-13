@@ -8,6 +8,7 @@ import { PROJECT_TYPE_LABELS } from "@/lib/constants";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { ProjectActions } from "@/components/projects/ProjectActions";
+import { AssignResourcesDialog } from "@/components/projects/AssignResourcesDialog";
 import { DependenciesTab } from "@/components/projects/tabs/DependenciesTab";
 import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
@@ -59,6 +60,7 @@ export default async function ProjectDetailPage({
   const canManage =
     can(user.role, "project.edit") && canActOnProject(user, project);
   const canArchive = can(user.role, "project.archive");
+  const canAssign = can(user.role, "project.assign") && canActOnProject(user, project);
   const activeTab = TABS.some((t) => t.key === searchParams.tab)
     ? searchParams.tab!
     : "overview";
@@ -128,13 +130,22 @@ export default async function ProjectDetailPage({
             </div>
           </div>
 
-          <ProjectActions
-            projectId={project.id}
-            status={project.status}
-            canManage={canManage}
-            canArchive={canArchive}
-            isArchived={project.isArchived}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {canAssign && (
+              <AssignResourcesDialog
+                projectId={project.id}
+                currentResourceIds={project.resources.map((r) => r.userId)}
+                currentConsultantIds={project.rlConsultants.map((c) => c.userId)}
+              />
+            )}
+            <ProjectActions
+              projectId={project.id}
+              status={project.status}
+              canManage={canManage}
+              canArchive={canArchive}
+              isArchived={project.isArchived}
+            />
+          </div>
         </div>
 
         {project.status === "paused" && project.currentPauseReasonComment && (

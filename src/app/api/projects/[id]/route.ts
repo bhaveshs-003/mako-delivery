@@ -184,6 +184,27 @@ export async function PATCH(
       }
 
       case "assign": {
+        // Validate roles server-side (spec §6.3): consultants must be rl_user,
+        // resources must be resource.
+        if (body.rlConsultantIds?.length) {
+          const c = await prisma.user.count({
+            where: { id: { in: body.rlConsultantIds }, role: "rl_user" },
+          });
+          if (c !== body.rlConsultantIds.length)
+            return badRequest("All RL consultants must be RL users");
+        }
+        if (body.resourceIds?.length) {
+          const c = await prisma.user.count({
+            where: { id: { in: body.resourceIds }, role: "resource" },
+          });
+          if (c !== body.resourceIds.length)
+            return badRequest("All resources must be Resource users");
+        }
+
+        // Notify only the newly-added resources (not the existing ones).
+        const existingRes = new Set(project.resources.map((r) => r.userId));
+        const addedResources = (body.resourceIds ?? []).filter((id) => !existingRes.has(id));
+
         const updated = await prisma.$transaction(async (tx) => {
           if (body.rlConsultantIds) {
             await tx.projectRlConsultant.deleteMany({ where: { projectId: project.id } });
@@ -200,8 +221,9 @@ export async function PATCH(
           await writeAudit({ actor, action: "project.assign", entityType: "project", entityId: project.id, after: { rlConsultants: body.rlConsultantIds, resources: body.resourceIds } }, tx);
           return tx.project.findUnique({ where: { id: project.id } });
         });
-        if (body.resourceIds?.length) {
-          await notifyMany(body.resourceIds, {
+
+        if (addedResources.length) {
+          await notifyMany(addedResources, {
             type: "resource_assigned",
             title: `Assigned to ${project.title}`,
             body: `You have been assigned to project ${project.title}.`,

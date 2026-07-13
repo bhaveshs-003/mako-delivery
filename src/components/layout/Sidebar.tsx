@@ -4,16 +4,42 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useState } from "react";
-import * as Icons from "lucide-react";
-import { LogOut, ChevronsLeft } from "lucide-react";
+import {
+  LogOut,
+  ChevronsLeft,
+  LayoutDashboard,
+  FolderKanban,
+  Ticket,
+  BarChart3,
+  Users,
+  Settings,
+  Bell,
+  CheckSquare,
+  ClipboardList,
+  Circle,
+  type LucideIcon,
+} from "lucide-react";
 import type { UserRole } from "@prisma/client";
 import { NAV_BY_ROLE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { RoleBadge } from "@/components/shared/RoleBadge";
 
+// Only the icons the nav actually uses — avoids bundling all of lucide.
+const NAV_ICONS: Record<string, LucideIcon> = {
+  LayoutDashboard,
+  FolderKanban,
+  Ticket,
+  BarChart3,
+  Users,
+  Settings,
+  Bell,
+  CheckSquare,
+  ClipboardList,
+};
+
 function NavIcon({ name, className }: { name: string; className?: string }) {
-  const Icon = (Icons as unknown as Record<string, Icons.LucideIcon>)[name] ?? Icons.Circle;
+  const Icon = NAV_ICONS[name] ?? Circle;
   return <Icon className={className} />;
 }
 

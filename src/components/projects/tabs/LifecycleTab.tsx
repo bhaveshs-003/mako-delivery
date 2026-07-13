@@ -68,10 +68,14 @@ export async function LifecycleTab({
     if (!c.milestoneId) continue;
     (commentsByMilestone.get(c.milestoneId) ?? commentsByMilestone.set(c.milestoneId, []).get(c.milestoneId)!).push(c);
   }
+  // Sign all download URLs in parallel (S3 presign is fast but sequential
+  // awaits still add up when a project has many attachments).
+  const signed = await Promise.all(
+    attachmentRows.map(async (a) => ({ a, url: await getDownloadUrl(a.fileKey) }))
+  );
   const docsByMilestone = new Map<string, { id: string; filename: string; url: string; uploadedByName: string }[]>();
-  for (const a of attachmentRows) {
+  for (const { a, url } of signed) {
     if (!a.milestoneId) continue;
-    const url = await getDownloadUrl(a.fileKey);
     const list = docsByMilestone.get(a.milestoneId) ?? docsByMilestone.set(a.milestoneId, []).get(a.milestoneId)!;
     list.push({ id: a.id, filename: a.filename, url, uploadedByName: a.uploadedBy.name });
   }

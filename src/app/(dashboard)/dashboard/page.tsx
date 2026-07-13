@@ -3,7 +3,7 @@ import { getDashboardMetrics } from "@/lib/metrics";
 import { ROLE_LABELS, ATTRIBUTION_COLORS, STATUS_LABELS } from "@/lib/constants";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DelayAttributionDonut } from "@/components/charts/DelayAttributionDonut";
+import { LazyDelayAttributionDonut } from "@/components/charts/lazy";
 import { redirect } from "next/navigation";
 
 // Quiet status dot colors for the compact status list.
@@ -74,7 +74,7 @@ export default async function DashboardPage() {
             <CardTitle>Timeline Break-up — Last 30 Days</CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <DelayAttributionDonut data={m.attribution} />
+            <LazyDelayAttributionDonut data={m.attribution} />
           </CardContent>
         </Card>
 

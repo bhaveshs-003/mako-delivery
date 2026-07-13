@@ -5,7 +5,7 @@ import { getAttributionReport } from "@/lib/reports";
 import { can } from "@/lib/permissions";
 import { ATTRIBUTION_COLORS, ATTRIBUTION_LABELS } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AttributionStackedBar } from "@/components/charts/AttributionStackedBar";
+import { LazyAttributionStackedBar } from "@/components/charts/lazy";
 import { AttributionBadge } from "@/components/shared/AttributionBadge";
 import { Download } from "lucide-react";
 
@@ -57,7 +57,7 @@ export default async function ReportsPage() {
       <Card>
         <CardHeader><CardTitle>Timeline Break-up by Project</CardTitle></CardHeader>
         <CardContent>
-          <AttributionStackedBar rows={rows} />
+          <LazyAttributionStackedBar rows={rows} />
         </CardContent>
       </Card>
 

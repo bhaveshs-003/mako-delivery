@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db";
 import { deriveDependencyState } from "@/lib/sla";
 import { businessDaysBetween } from "@/lib/business-days";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DelayAttributionDonut, type AttributionDatum } from "@/components/charts/DelayAttributionDonut";
+import type { AttributionDatum } from "@/components/charts/DelayAttributionDonut";
+import { LazyDelayAttributionDonut } from "@/components/charts/lazy";
 import { PauseActiveTimeline, type PauseSegment } from "@/components/charts/PauseActiveTimeline";
 
 export async function OverviewTab({
@@ -119,7 +120,7 @@ export async function OverviewTab({
             <CardTitle>Timeline Break-up</CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
-            <DelayAttributionDonut data={attrData} />
+            <LazyDelayAttributionDonut data={attrData} />
           </CardContent>
         </Card>
 

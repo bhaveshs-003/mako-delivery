@@ -18,9 +18,7 @@ export default async function DashboardLayout({
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="scroll-slim flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1400px] animate-fade-in px-5 py-5">
-            {children}
-          </div>
+          <div className="animate-fade-in px-6 py-5">{children}</div>
         </main>
       </div>
     </div>

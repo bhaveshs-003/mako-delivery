@@ -17,7 +17,7 @@ import { ChangeRequestsTab } from "@/components/projects/tabs/ChangeRequestsTab"
 import { MomsTab } from "@/components/projects/tabs/MomsTab";
 import { CommentsTab } from "@/components/projects/tabs/CommentsTab";
 import { DocumentsTab } from "@/components/projects/tabs/DocumentsTab";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 const TABS: { key: string; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -68,36 +68,37 @@ export default async function ProjectDetailPage({
     !project.actualCompletionDate && now > project.rlCommittedDeadline;
 
   return (
-    <div className="space-y-6">
-      <Link
-        href="/projects"
-        className="inline-flex items-center gap-1 text-sm text-slate hover:text-navy"
-      >
-        <ArrowLeft className="h-4 w-4" /> Back to Projects
-      </Link>
+    <div className="space-y-4">
+      {/* Compact header */}
+      <div>
+        <Link
+          href="/projects"
+          className="inline-flex items-center gap-1 text-xs text-muted transition-colors hover:text-ink"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Projects
+        </Link>
 
-      {/* Project header (spec §5.3) */}
-      <div className="rounded-lg border border-border bg-surface p-6 shadow-card">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="rounded bg-bg px-2 py-0.5 text-xs font-medium text-slate">
+        <div className="mt-1.5 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-ink">
+                {project.title}
+              </h1>
+              <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-ink-2">
                 {PROJECT_TYPE_LABELS[project.type]}
               </span>
               <StatusBadge status={project.status} />
-            </div>
-            <h1 className="text-2xl font-bold text-navy">
-              {project.title}
               {project.isArchived && (
-                <span className="ml-2 rounded bg-gray-100 px-2 py-0.5 align-middle text-xs font-medium text-gray-500">
+                <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-muted">
                   Archived
                 </span>
               )}
-            </h1>
-            <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate">
+            </div>
+
+            {/* Meta: people + the three timelines, inline & compact */}
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
               {project.projectLead && (
-                <span className="inline-flex items-center gap-1.5">
-                  Lead:
+                <span className="inline-flex items-center gap-1.5 text-ink-2">
                   <UserAvatar
                     name={project.projectLead.name}
                     deactivated={!project.projectLead.isActive}
@@ -107,12 +108,26 @@ export default async function ProjectDetailPage({
                 </span>
               )}
               {project.rlConsultants.length > 0 && (
-                <span>
-                  · RL: {project.rlConsultants.map((c) => c.user.name).join(", ")}
+                <span>RL: {project.rlConsultants.map((c) => c.user.name).join(", ")}</span>
+              )}
+              <span className="hidden text-line-strong sm:inline">•</span>
+              <span className={pastDeadline ? "text-danger" : "text-ink-2"}>
+                <span className="text-muted">RL</span> {formatDate(project.rlCommittedDeadline)}
+              </span>
+              <span className="text-ink-2">
+                <span className="text-muted">Mako</span> {formatDate(project.makoInternalDeadline)}
+              </span>
+              <span className="text-ink-2">
+                <span className="text-muted">Actual</span> {formatDate(project.actualCompletionDate)}
+              </span>
+              {project.rlProjectId && (
+                <span className="text-ink-2">
+                  <span className="text-muted">ID</span> {project.rlProjectId}
                 </span>
               )}
-            </p>
+            </div>
           </div>
+
           <ProjectActions
             projectId={project.id}
             status={project.status}
@@ -123,75 +138,35 @@ export default async function ProjectDetailPage({
         </div>
 
         {project.status === "paused" && project.currentPauseReasonComment && (
-          <div className="mt-4 rounded-md border-l-4 border-warning bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <div className="mt-3 rounded-md border-l-2 border-warning bg-warning/5 px-3 py-1.5 text-xs text-warning">
             <span className="font-medium">Paused</span> ·{" "}
             {project.currentPauseReasonCategory?.replace(/_/g, " ")} —{" "}
             {project.currentPauseReasonComment}
           </div>
         )}
-
-        {/* The THREE timelines */}
-        <div className="mt-5 grid grid-cols-2 gap-4 rounded-md border border-border bg-bg p-4 sm:grid-cols-4">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate">
-              RL Deadline
-            </p>
-            <p
-              className={`text-sm font-semibold ${pastDeadline ? "text-danger" : "text-navy"}`}
-            >
-              {formatDate(project.rlCommittedDeadline)}
-            </p>
-            <p className="text-[10px] text-slate">fixed</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate">
-              Mako Target
-            </p>
-            <p className="text-sm font-semibold text-navy">
-              {formatDate(project.makoInternalDeadline)}
-            </p>
-            <p className="text-[10px] text-slate">adjustable</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate">
-              Actual Completion
-            </p>
-            <p className="text-sm font-semibold text-navy">
-              {formatDate(project.actualCompletionDate)}
-            </p>
-            <p className="text-[10px] text-slate">auto-calc</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate">
-              RL Project ID
-            </p>
-            <p className="text-sm font-semibold text-navy">
-              {project.rlProjectId ?? "—"}
-            </p>
-          </div>
-        </div>
       </div>
 
-      {/* Tab bar — navigable via ?tab= (spec §5.3) */}
-      <div className="border-b border-border">
-        <div className="flex flex-wrap gap-4 overflow-x-auto text-sm">
+      {/* Sticky tab bar pinned to the top of the scroll area */}
+      <div className="sticky top-0 z-20 -mx-6 border-b border-line bg-canvas/85 px-6 backdrop-blur">
+        <nav className="scroll-slim flex gap-5 overflow-x-auto">
           {TABS.map((tab) => {
             const active = activeTab === tab.key;
             return (
               <Link
                 key={tab.key}
                 href={`/projects/${project.id}?tab=${tab.key}`}
-                className={`whitespace-nowrap border-b-2 pb-2 ${
+                className={cn(
+                  "-mb-px whitespace-nowrap border-b-2 px-0.5 py-2.5 text-sm transition-colors",
                   active
-                    ? "border-navy font-medium text-navy"
-                    : "border-transparent text-slate hover:text-navy"
-                }`}
+                    ? "border-brand font-medium text-ink"
+                    : "border-transparent text-muted hover:text-ink"
+                )}
               >
                 {tab.label}
               </Link>
             );
           })}
-        </div>
+        </nav>
       </div>
 
       {/* Tab content */}

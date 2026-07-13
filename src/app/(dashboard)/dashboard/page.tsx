@@ -71,7 +71,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Delay Attribution — Last 30 Days</CardTitle>
+            <CardTitle>Timeline Break-up — Last 30 Days</CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
             <DelayAttributionDonut data={m.attribution} />

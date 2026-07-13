@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db";
 import { deriveDependencyState } from "@/lib/sla";
+import { businessDaysBetween } from "@/lib/business-days";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DelayAttributionDonut, type AttributionDatum } from "@/components/charts/DelayAttributionDonut";
+import { PauseActiveTimeline, type PauseSegment } from "@/components/charts/PauseActiveTimeline";
 
 export async function OverviewTab({
   projectId,
@@ -11,14 +13,22 @@ export async function OverviewTab({
   description: string | null;
 }) {
   const now = new Date();
-  const [milestones, dependencies, pendingApprovals, openTickets, changeRequests, pauses] =
+  const [project, milestones, dependencies, pendingApprovals, openTickets, changeRequests, pauses] =
     await Promise.all([
+      prisma.project.findUnique({
+        where: { id: projectId },
+        select: { createdAt: true, status: true, actualCompletionDate: true },
+      }),
       prisma.milestone.findMany({ where: { projectId }, select: { status: true } }),
       prisma.dependency.findMany({ where: { projectId } }),
       prisma.approvalRequest.count({ where: { projectId, status: "pending" } }),
       prisma.ticketProject.count({ where: { projectId, ticket: { status: { notIn: ["closed", "resolved"] } } } }),
       prisma.changeRequest.count({ where: { projectId, status: { notIn: ["approved", "rejected"] } } }),
-      prisma.pauseHistory.findMany({ where: { projectId }, select: { reasonCategory: true, pauseDurationDays: true } }),
+      prisma.pauseHistory.findMany({
+        where: { projectId },
+        orderBy: { pausedAt: "asc" },
+        select: { pausedAt: true, resumedAt: true, reasonCategory: true, reasonComment: true, pauseDurationDays: true },
+      }),
     ]);
 
   const doneMilestones = milestones.filter((m) => m.status === "completed").length;
@@ -48,6 +58,21 @@ export async function OverviewTab({
     { party: "product_bug", days: attribution.product_bug },
   ];
 
+  // ── Active vs Paused timeline ─────────────────────────────────────────────
+  const start = project?.createdAt ?? now;
+  const end = project?.actualCompletionDate ?? now;
+  const ongoing = !project?.actualCompletionDate;
+  const segments: PauseSegment[] = pauses.map((p) => ({
+    pausedAtISO: p.pausedAt.toISOString(),
+    resumedAtISO: p.resumedAt ? p.resumedAt.toISOString() : null,
+    reasonCategory: p.reasonCategory,
+    reasonComment: p.reasonComment,
+    days: p.pauseDurationDays ?? businessDaysBetween(p.pausedAt, p.resumedAt ?? now),
+  }));
+  const pausedDays = segments.reduce((s, seg) => s + seg.days, 0);
+  const elapsed = businessDaysBetween(start, end);
+  const activeDays = Math.max(0, elapsed - pausedDays);
+
   const cards = [
     { label: "Milestones", value: `${doneMilestones}/${milestones.length}`, sub: "done" },
     { label: "Open Deps", value: openDeps, sub: `${breached} breached`, danger: breached > 0 },
@@ -57,38 +82,58 @@ export async function OverviewTab({
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {cards.map((c) => (
-          <Card key={c.label} className="p-4">
-            <p className="text-xs text-slate">{c.label}</p>
-            <p className="mt-1 text-2xl font-bold text-navy">{c.value}</p>
+          <Card key={c.label} className="px-4 py-3.5">
+            <p className="text-xs font-medium text-muted">{c.label}</p>
+            <p className="tabular mt-1 text-2xl font-semibold tracking-tight text-ink">{c.value}</p>
             {c.sub && (
-              <p className={`text-xs ${c.danger ? "text-danger" : "text-slate"}`}>{c.sub}</p>
+              <p className={`text-xs ${c.danger ? "text-danger" : "text-muted"}`}>{c.sub}</p>
             )}
           </Card>
         ))}
       </div>
 
-      {description && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Description</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate">{description}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="max-w-md">
+      {/* Active vs Paused timeline */}
+      <Card>
         <CardHeader>
-          <CardTitle>Delay Attribution</CardTitle>
+          <CardTitle>Active &amp; Paused Timeline</CardTitle>
         </CardHeader>
-        <CardContent>
-          <DelayAttributionDonut data={attrData} />
+        <CardContent className="pt-2">
+          <PauseActiveTimeline
+            startISO={start.toISOString()}
+            endISO={end.toISOString()}
+            nowISO={now.toISOString()}
+            pauses={segments}
+            activeDays={activeDays}
+            pausedDays={pausedDays}
+            ongoing={ongoing}
+          />
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Timeline Break-up</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-2">
+            <DelayAttributionDonut data={attrData} />
+          </CardContent>
+        </Card>
+
+        {description && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Description</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-ink-2">{description}</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

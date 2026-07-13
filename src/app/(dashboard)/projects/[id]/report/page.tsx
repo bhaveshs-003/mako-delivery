@@ -67,7 +67,7 @@ export default async function PostMortemPage({ params }: { params: { id: string 
 
       {/* Attribution summary */}
       <section>
-        <h2 className="mb-2 text-lg font-semibold text-navy">Delay Attribution — {totals.total} business days</h2>
+        <h2 className="mb-2 text-lg font-semibold text-navy">Timeline Break-up — {totals.total} business days</h2>
         <div className="flex flex-wrap gap-3 text-sm">
           {(["mako", "rl", "client_via_rl", "product_bug"] as const).map((k) => (
             <span key={k} className="rounded-md border border-border px-3 py-1">

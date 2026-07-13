@@ -29,7 +29,7 @@ export default async function ReportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-navy">Delay Attribution</h1>
+          <h1 className="text-2xl font-bold text-navy">Timeline Break-up</h1>
           <p className="text-sm text-slate">Business-day delay ownership across your projects</p>
         </div>
         {canExport && (
@@ -55,7 +55,7 @@ export default async function ReportsPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Delay Attribution by Project</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Timeline Break-up by Project</CardTitle></CardHeader>
         <CardContent>
           <AttributionStackedBar rows={rows} />
         </CardContent>

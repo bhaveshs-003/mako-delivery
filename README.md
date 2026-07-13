@@ -105,9 +105,9 @@ and switch to production providers by setting env vars:
 
 - **Email** — set `RESEND_API_KEY` + `EMAIL_FROM`. Until then, emails are logged
   to the server console. All notifications route through `src/lib/notifications.ts`.
-- **Files** — set `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` / `S3_BUCKET`
-  (+ `S3_ENDPOINT` for MinIO). Until then, uploads go to `./.uploads` and stream
-  via `/api/files/[key]`. In production, downloads use presigned URLs.
+- **Files** — set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (Supabase Storage
+  via the SDK; no S3 keys). Until then, uploads go to `./.uploads` and stream via
+  `/api/files/[key]`. In production, downloads use short-lived signed URLs.
 
 ## Build status — all phases implemented
 

@@ -1,79 +1,61 @@
 /**
- * File storage (spec §1, §2.12). S3-compatible via the AWS SDK — works with
- * AWS S3 and self-hosted MinIO (set S3_ENDPOINT for MinIO). When S3 is not
- * configured, falls back to local disk under ./.uploads so document upload
- * works in dev with zero cloud setup.
+ * File storage (spec §1, §2.12). Uses Supabase Storage via the Supabase SDK,
+ * authenticated with the project's SERVICE ROLE key — no S3 access keys needed.
+ * When Supabase is not configured, falls back to local disk under ./.uploads so
+ * document upload works in dev with zero cloud setup.
  *
- * To go live: set S3_ENDPOINT (MinIO only), S3_REGION, S3_BUCKET,
- * S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY in .env (see README).
+ * To go live: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env (see
+ * README / HOSTING.md) and create the bucket named by SUPABASE_STORAGE_BUCKET.
  */
-import {
-  S3Client,
-  PutObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile, readFile } from "fs/promises";
 import path from "path";
 
-const BUCKET = process.env.S3_BUCKET || "mako-governance";
+const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "mako-governance";
 const LOCAL_DIR = path.join(process.cwd(), ".uploads");
 
-const s3 =
-  process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY
-    ? new S3Client({
-        region: process.env.S3_REGION || "us-east-1",
-        endpoint: process.env.S3_ENDPOINT || undefined,
-        forcePathStyle: !!process.env.S3_ENDPOINT, // required for MinIO
-        credentials: {
-          accessKeyId: process.env.S3_ACCESS_KEY_ID,
-          secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-        },
+const supabase: SupabaseClient | null =
+  process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
       })
     : null;
 
 export function isStorageConfigured(): boolean {
-  return s3 !== null;
+  return supabase !== null;
 }
 
-/** Deterministic-ish object key: keeps the original name for readability. */
+/** Object key: keeps the original filename for readability. */
 export function buildFileKey(filename: string): string {
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
   return `${new Date().getUTCFullYear()}/${randomUUID()}-${safe}`;
 }
 
-/** Store bytes. Returns the key to persist on the attachment row. */
+/** Store bytes. Returns nothing; the key is persisted on the attachment row. */
 export async function putObject(
   key: string,
   body: Buffer,
   contentType: string
 ): Promise<void> {
-  if (s3) {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: BUCKET,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-      })
-    );
+  if (supabase) {
+    const { error } = await supabase.storage
+      .from(BUCKET)
+      .upload(key, body, { contentType, upsert: true });
+    if (error) throw new Error(`Supabase upload failed: ${error.message}`);
     return;
   }
-  // Local fallback
   const full = path.join(LOCAL_DIR, key);
   await mkdir(path.dirname(full), { recursive: true });
   await writeFile(full, body);
 }
 
-/** Read bytes back (used by the local download route in dev). */
+/** Read bytes back (used by the local download route in dev fallback mode). */
 export async function getObjectBytes(key: string): Promise<Buffer | null> {
-  if (s3) {
-    const res = await s3.send(
-      new GetObjectCommand({ Bucket: BUCKET, Key: key })
-    );
-    const bytes = await res.Body?.transformToByteArray();
-    return bytes ? Buffer.from(bytes) : null;
+  if (supabase) {
+    const { data, error } = await supabase.storage.from(BUCKET).download(key);
+    if (error || !data) return null;
+    return Buffer.from(await data.arrayBuffer());
   }
   try {
     return await readFile(path.join(LOCAL_DIR, key));
@@ -83,20 +65,20 @@ export async function getObjectBytes(key: string): Promise<Buffer | null> {
 }
 
 /**
- * A URL the browser can use to download the object. With S3 this is a
- * time-limited presigned URL; in local-fallback mode it's an app route that
+ * A URL the browser can use to download the object. With Supabase this is a
+ * time-limited signed URL; in local-fallback mode it's an app route that
  * streams the file from disk.
  */
 export async function getDownloadUrl(
   key: string,
   expiresInSeconds = 300
 ): Promise<string> {
-  if (s3) {
-    return getSignedUrl(
-      s3,
-      new GetObjectCommand({ Bucket: BUCKET, Key: key }),
-      { expiresIn: expiresInSeconds }
-    );
+  if (supabase) {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(key, expiresInSeconds);
+    if (error || !data) return `/api/files/${encodeURIComponent(key)}`;
+    return data.signedUrl;
   }
   return `/api/files/${encodeURIComponent(key)}`;
 }

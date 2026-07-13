@@ -17,16 +17,20 @@ variables, run the migrations against the hosted DB, and deploy.
    - **Session / direct** (port `5432`) → this is your `DIRECT_URL`.
    Put the DB password into both where it shows `[YOUR-PASSWORD]`.
 
-## 2. Supabase — file storage (S3-compatible)
+## 2. Supabase — file storage (via the Supabase SDK, no S3 keys)
 
 1. **Storage → New bucket** → name it `mako-governance` (keep it **private**).
-2. **Project Settings → Storage → S3 Connection**: copy the **Endpoint** and
-   **Region** → `S3_ENDPOINT`, `S3_REGION`.
-3. Click **New access key** → copy the access key + secret →
-   `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
+   If you use a different name, set `SUPABASE_STORAGE_BUCKET`.
+2. **Project Settings → API**: copy the **Project URL** → `SUPABASE_URL`, and the
+   **service_role** secret key → `SUPABASE_SERVICE_ROLE_KEY`.
 
-> The app already talks S3 (`src/lib/storage.ts`), so no code changes — it just
-> points at Supabase instead of the local `.uploads` fallback.
+> `src/lib/storage.ts` uses the Supabase SDK authenticated with the service-role
+> key — **no S3 access keys needed**. Uploads go to the bucket; downloads use
+> short-lived signed URLs. Without these vars it falls back to local `./.uploads`.
+>
+> ⚠️ The `service_role` key bypasses row-level security — it's server-only. It's
+> never exposed to the browser here (storage runs in API routes / server
+> components), and `.env` is gitignored. Keep it out of any client code.
 
 ## 3. Resend — email
 
@@ -70,9 +74,9 @@ npx prisma db seed          # OPTIONAL: demo data. Skip for a clean production D
 | `AUDIT_GENESIS_SEED` | Keep as-is; **never change after data exists** |
 | `RESEND_API_KEY` | Resend → API Keys |
 | `EMAIL_FROM` | A Resend-verified sender |
-| `S3_ENDPOINT` / `S3_REGION` | Supabase → Storage → S3 Connection |
-| `S3_BUCKET` | The bucket you created (`mako-governance`) |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Supabase → Storage → S3 access key |
+| `SUPABASE_URL` | Supabase → Settings → API → Project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → service_role secret |
+| `SUPABASE_STORAGE_BUCKET` | The bucket name (default `mako-governance`) |
 
 Nothing else changes: RBAC, the audit hash chain, business-day math, and every
 feature behave identically on hosted infra.

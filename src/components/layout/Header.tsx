@@ -29,17 +29,17 @@ export function Header() {
   const crumbs = useCrumbs();
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b border-border bg-surface px-6">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-surface/80 px-5 backdrop-blur">
       <nav className="flex items-center gap-1.5 text-sm">
         {crumbs.map((c, i) => (
           <Fragment key={c.href}>
-            {i > 0 && <span className="text-border-strong">/</span>}
+            {i > 0 && <span className="text-line-strong">/</span>}
             <Link
               href={c.href}
               className={
                 i === crumbs.length - 1
-                  ? "font-medium text-navy"
-                  : "text-slate hover:text-navy"
+                  ? "font-medium text-ink"
+                  : "text-muted transition-colors hover:text-ink"
               }
             >
               {c.label}
@@ -48,7 +48,7 @@ export function Header() {
         ))}
       </nav>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-2">
         <GlobalSearch />
         <NotificationBell />
       </div>

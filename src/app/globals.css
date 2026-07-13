@@ -2,46 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Mako design tokens (spec §1) — also exposed as CSS vars for charts/exports. */
+/* Design tokens mirrored as CSS vars for charts / SVG / print. */
 :root {
-  --color-navy: #1f2a44;
-  --color-steel: #3a5a78;
-  --color-slate: #5b6774;
-  --color-text: #1a1a1a;
-  --color-bg: #f7f8fa;
-  --color-surface: #ffffff;
-  --color-border: #e2e6eb;
-  --color-border-strong: #cbd2da;
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --muted: #8a93a2;
+  --line: #e7eaf0;
+  --brand: #2a78d6;
 
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-danger: #dc2626;
-  --color-info: #2563eb;
+  /* Attribution palette — validated CVD-safe */
+  --attr-mako: #2a78d6;
+  --attr-rl: #eb6834;
+  --attr-client: #1baf7a;
+  --attr-bug: #e34948;
 
-  /* Attribution palette — SACRED */
-  --attr-mako: #3a5a78;
-  --attr-rl: #7c3aed;
-  --attr-client-via-rl: #0891b2;
-  --attr-product-bug: #dc2626;
+  /* Chart chrome */
+  --grid: #eceef3;
+  --axis: #d4d9e2;
 }
 
 html,
 body {
-  color: var(--color-text);
-  background: var(--color-bg);
+  background: var(--canvas);
+  color: var(--ink);
   font-family: var(--font-inter), "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular figures for metrics & table cells that must align. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+  /* Subtle scrollbars for a modern feel */
+  .scroll-slim::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: var(--line-strong, #d4d9e2);
+    border-radius: 9999px;
+  }
 }
 
-/* Skeleton shimmer for loading states (spec §4.2). */
 @layer components {
   .skeleton {
-    @apply animate-pulse rounded-md bg-border/70;
+    @apply animate-pulse rounded-md bg-line;
+  }
+}
+
+/* Print: hide chrome, keep reports clean (post-mortem export). */
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+  main {
+    overflow: visible !important;
   }
 }

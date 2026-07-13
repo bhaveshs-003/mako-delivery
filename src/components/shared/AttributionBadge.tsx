@@ -2,9 +2,8 @@ import { cn } from "@/lib/utils";
 import { ATTRIBUTION_COLORS, ATTRIBUTION_LABELS } from "@/lib/constants";
 
 /**
- * Delay-owner badge. Always uses the SACRED 4-color attribution palette
- * (spec §6.1). Colors are applied inline from the shared constant so they can
- * never drift from the chart palette.
+ * Delay-owner badge. Uses the SACRED validated attribution palette. Dot carries
+ * the hue (identity is never color-alone — the label is always present).
  */
 export function AttributionBadge({
   party,
@@ -17,15 +16,11 @@ export function AttributionBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-md border border-line bg-surface-2 px-2 py-0.5 text-xs font-medium text-ink-2",
         className
       )}
-      style={{
-        color,
-        backgroundColor: `${color}1a`, // ~10% opacity
-        borderColor: `${color}4d`, // ~30% opacity
-      }}
     >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
       {ATTRIBUTION_LABELS[party] ?? party}
     </span>
   );

@@ -6,12 +6,23 @@
 import type { UserRole } from "@prisma/client";
 
 // ── Attribution palette — used EVERYWHERE a delay owner is shown ────────────
+// Validated CVD-safe (dataviz palette check, light + dark). RL is orange, not
+// purple: blue+purple collapses under red-blindness — orange stays distinct.
 export const ATTRIBUTION_COLORS = {
-  mako: "#3A5A78", // steel blue
-  rl: "#7C3AED", // purple
-  client_via_rl: "#0891B2", // teal
-  product_bug: "#DC2626", // red
-  other: "#5B6774", // slate (fallback)
+  mako: "#2a78d6", // blue
+  rl: "#eb6834", // orange
+  client_via_rl: "#1baf7a", // teal
+  product_bug: "#e34948", // red
+  other: "#8a93a2", // muted gray (fallback)
+} as const;
+
+// Dark-mode steps of the same hues (for future dark theme / charts on dark).
+export const ATTRIBUTION_COLORS_DARK = {
+  mako: "#3987e5",
+  rl: "#d95926",
+  client_via_rl: "#199e70",
+  product_bug: "#e66767",
+  other: "#8a93a2",
 } as const;
 
 export const ATTRIBUTION_LABELS: Record<string, string> = {

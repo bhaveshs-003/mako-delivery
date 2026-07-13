@@ -13,12 +13,14 @@ export default async function DashboardLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="flex h-screen overflow-hidden bg-bg">
+    <div className="flex h-screen overflow-hidden bg-canvas">
       <Sidebar role={user.role} name={user.name} email={user.email} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[1440px] px-6 py-6">{children}</div>
+        <main className="scroll-slim flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-[1400px] animate-fade-in px-5 py-5">
+            {children}
+          </div>
         </main>
       </div>
     </div>

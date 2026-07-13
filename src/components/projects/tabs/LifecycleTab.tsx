@@ -158,7 +158,7 @@ export async function LifecycleTab({
                       return (
                         <div
                           key={m.id}
-                          className="overflow-hidden rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs"
+                          className="rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs"
                         >
                           {/* Milestone header */}
                           <div className="flex items-start justify-between gap-3 p-3">

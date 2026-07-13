@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, FileText, Upload, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, Textarea } from "@/components/ui/form-field";
+import { Select } from "@/components/ui/form-field";
+import { MentionTextarea, deriveMentions } from "@/components/ui/mention-textarea";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
@@ -32,7 +33,6 @@ export function MilestoneDetail({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
 
   async function assignOwner(next: string) {
     setBusy(true);
@@ -53,13 +53,13 @@ export function MilestoneDetail({
   async function postComment() {
     setBusy(true);
     try {
+      const mentionUserIds = deriveMentions(draft, resources);
       await apiFetch("/api/comments", {
         method: "POST",
-        body: JSON.stringify({ milestoneId, content: draft, mentionUserIds: tags }),
+        body: JSON.stringify({ milestoneId, content: draft, mentionUserIds }),
       });
-      toast.success(tags.length ? "Comment posted & tagged" : "Comment posted");
+      toast.success(mentionUserIds.length ? "Comment posted & tagged" : "Comment posted");
       setDraft("");
-      setTags([]);
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to post");
@@ -132,25 +132,17 @@ export function MilestoneDetail({
             </div>
 
             <div className="mt-2 space-y-2 rounded-md border border-border bg-surface p-2">
-              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="Add a comment…" />
-              {resources.length > 0 && (
-                <div>
-                  <p className="mb-1 text-xs text-slate">Tag resources:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {resources.map((r) => {
-                      const on = tags.includes(r.id);
-                      return (
-                        <button key={r.id} type="button"
-                          onClick={() => setTags((t) => on ? t.filter((x) => x !== r.id) : [...t, r.id])}
-                          className={`rounded-full border px-2 py-0.5 text-xs ${on ? "border-steel bg-steel text-white" : "border-border bg-surface text-slate hover:border-border-strong"}`}>
-                          @{r.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div className="flex justify-end">
+              <MentionTextarea
+                value={draft}
+                onChange={setDraft}
+                people={resources}
+                rows={2}
+                placeholder="Add a comment… type @ to tag a resource"
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-2xs text-muted">
+                  Type <span className="font-medium text-ink-2">@</span> to tag a project resource
+                </p>
                 <Button size="sm" disabled={!draft.trim() || busy} onClick={postComment}>Post</Button>
               </div>
             </div>

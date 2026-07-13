@@ -105,23 +105,13 @@ async function main() {
     templateIds[type] = t.id;
   }
 
-  // ── Users: 3 per role ─────────────────────────────────────────────────────
+  // ── Users: ONE account per role, for easy QA ──────────────────────────────
   const userSpecs: { email: string; name: string; role: UserRole }[] = [
     { email: "super@mako.dev", name: "Sarah Chen", role: "super_admin" },
-    { email: "super2@mako.dev", name: "David Kim", role: "super_admin" },
-    { email: "super3@mako.dev", name: "Elena Ruiz", role: "super_admin" },
     { email: "admin@mako.dev", name: "Michael Torres", role: "admin" },
-    { email: "admin2@mako.dev", name: "Nina Kapoor", role: "admin" },
-    { email: "admin3@mako.dev", name: "Tom Becker", role: "admin" },
     { email: "priya@mako.dev", name: "Priya Sharma", role: "sub_admin" },
-    { email: "sub2@mako.dev", name: "Arjun Mehta", role: "sub_admin" },
-    { email: "sub3@mako.dev", name: "Lisa Wong", role: "sub_admin" },
     { email: "john@rocketlane.dev", name: "John Doe", role: "rl_user" },
-    { email: "jane@rocketlane.dev", name: "Jane Smith", role: "rl_user" },
-    { email: "rl3@rocketlane.dev", name: "Mark Lee", role: "rl_user" },
     { email: "raj@mako.dev", name: "Raj Patel", role: "resource" },
-    { email: "res2@mako.dev", name: "Anita Desai", role: "resource" },
-    { email: "res3@mako.dev", name: "Carlos Gomez", role: "resource" },
   ];
 
   const users: Record<string, { id: string; email: string; role: UserRole; name: string }> = {};
@@ -132,12 +122,6 @@ async function main() {
     users[spec.email] = { id: u.id, email: u.email, role: u.role, name: u.name };
   }
 
-  // Deactivate one resource to exercise the "preserved history" path.
-  await prisma.user.update({
-    where: { email: "res3@mako.dev" },
-    data: { isActive: false, deactivatedAt: subDays(NOW, 10), deactivatedBy: users["super@mako.dev"].id },
-  });
-
   const superActor: AuditActor = {
     id: users["super@mako.dev"].id,
     email: users["super@mako.dev"].email,
@@ -147,22 +131,23 @@ async function main() {
   };
 
   // ── Projects ──────────────────────────────────────────────────────────────
-  const subAdmins = ["priya@mako.dev", "sub2@mako.dev", "sub3@mako.dev"];
-  const rlUsers = ["john@rocketlane.dev", "jane@rocketlane.dev", "rl3@rocketlane.dev"];
-  const resources = ["raj@mako.dev", "res2@mako.dev", "res3@mako.dev"];
+  // With one account per role, every project shares the same lead / RL POC /
+  // resource so any of the five demo logins can exercise every project.
+  const leadEmail = "priya@mako.dev";
+  const rlEmail = "john@rocketlane.dev";
+  const resourceEmail = "raj@mako.dev";
 
   const projectSpecs = [
-    { title: "Alpha Corp Data Migration", type: "migration" as ProjectType, status: "in_progress" as const, deadlineIn: 20, lead: 0 },
-    { title: "Beta Industries Legacy Migration", type: "migration" as ProjectType, status: "paused" as const, deadlineIn: 8, lead: 1 },
-    { title: "Gamma Retail Salesforce Integration", type: "integration" as ProjectType, status: "in_progress" as const, deadlineIn: 35, lead: 2 },
-    { title: "Delta Health API Integration", type: "integration" as ProjectType, status: "completed" as const, deadlineIn: -5, lead: 0 },
-    { title: "Epsilon Bank Custom Portal", type: "custom_app" as ProjectType, status: "in_progress" as const, deadlineIn: 45, lead: 1 },
-    { title: "Zeta Logistics Custom App", type: "custom_app" as ProjectType, status: "not_started" as const, deadlineIn: 60, lead: 2 },
+    { title: "Alpha Corp Data Migration", type: "migration" as ProjectType, status: "in_progress" as const, deadlineIn: 20 },
+    { title: "Beta Industries Legacy Migration", type: "migration" as ProjectType, status: "paused" as const, deadlineIn: 8 },
+    { title: "Gamma Retail Salesforce Integration", type: "integration" as ProjectType, status: "in_progress" as const, deadlineIn: 35 },
+    { title: "Delta Health API Integration", type: "integration" as ProjectType, status: "completed" as const, deadlineIn: -5 },
+    { title: "Epsilon Bank Custom Portal", type: "custom_app" as ProjectType, status: "in_progress" as const, deadlineIn: 45 },
+    { title: "Zeta Logistics Custom App", type: "custom_app" as ProjectType, status: "not_started" as const, deadlineIn: 60 },
   ];
 
   let projIndex = 0;
   for (const spec of projectSpecs) {
-    const leadEmail = subAdmins[spec.lead];
     const project = await prisma.project.create({
       data: {
         title: spec.title,
@@ -177,16 +162,10 @@ async function main() {
         projectLeadId: users[leadEmail].id,
         createdBy: users["admin@mako.dev"].id,
         rlConsultants: {
-          create: [
-            { userId: users[rlUsers[projIndex % 3]].id, assignedBy: users["admin@mako.dev"].id },
-            { userId: users[rlUsers[(projIndex + 1) % 3]].id, assignedBy: users["admin@mako.dev"].id },
-          ],
+          create: [{ userId: users[rlEmail].id, assignedBy: users["admin@mako.dev"].id }],
         },
         resources: {
-          create: [
-            { userId: users[resources[projIndex % 3]].id, assignedBy: users["admin@mako.dev"].id },
-            { userId: users[resources[(projIndex + 1) % 3]].id, assignedBy: users["admin@mako.dev"].id },
-          ],
+          create: [{ userId: users[resourceEmail].id, assignedBy: users["admin@mako.dev"].id }],
         },
       },
     });
@@ -210,7 +189,7 @@ async function main() {
           projectId: project.id,
           parentStage: stage,
           name: stage,
-          ownerId: users[resources[projIndex % 3]].id,
+          ownerId: users[resourceEmail].id,
           dueDate: addDays(NOW, mIdx * 7 - 3),
           status: status as never,
           approvalStatus: mIdx === 1 ? "pending" : "not_required",
@@ -219,10 +198,10 @@ async function main() {
           createdBy: users[leadEmail].id,
           subtasks: {
             create: [
-              { title: `${stage} — prep`, assignedToId: users[resources[projIndex % 3]].id, status: "done", createdBy: users[leadEmail].id },
+              { title: `${stage} — prep`, assignedToId: users[resourceEmail].id, status: "done", createdBy: users[leadEmail].id },
               {
                 title: `${stage} — execution`,
-                assignedToId: users[resources[projIndex % 3]].id,
+                assignedToId: users[resourceEmail].id,
                 status: mIdx === 1 ? "blocked" : mIdx === 0 ? "done" : "not_started",
                 blockedReason: mIdx === 1 ? "Awaiting source-sheet clarification from RL." : null,
                 createdBy: users[leadEmail].id,
@@ -242,7 +221,7 @@ async function main() {
             requestedAt: subDays(NOW, 4),
             requestComment: `Please review ${stage} output and confirm accuracy.`,
             status: projIndex % 2 === 0 ? "pending" : "approved",
-            decidedBy: projIndex % 2 === 0 ? null : users[rlUsers[projIndex % 3]].id,
+            decidedBy: projIndex % 2 === 0 ? null : users[rlEmail].id,
             decidedAt: projIndex % 2 === 0 ? null : subDays(NOW, 2),
             decisionComment: projIndex % 2 === 0 ? null : "Reviewed and approved.",
             slaDeadline: subDays(NOW, 1),

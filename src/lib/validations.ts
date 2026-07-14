@@ -10,13 +10,12 @@ export const createProjectSchema = z.object({
   title: z.string().min(1, "Title is required").max(500),
   description: z.string().max(5000).optional().or(z.literal("")),
   type: z.enum(["migration", "integration", "custom_app"]),
-  rlCommittedDeadline: z.coerce.date(),
+  rlCommittedDeadline: z.coerce.date().optional().nullable(),
   makoInternalDeadline: z.coerce.date().optional().nullable(),
   rlProjectId: z.string().max(255).optional().or(z.literal("")),
   projectLeadId: uuid.optional().nullable(),
   rlConsultantIds: z.array(uuid).default([]),
   resourceIds: z.array(uuid).default([]),
-  loadMilestonesFromTemplate: z.boolean().default(true),
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 

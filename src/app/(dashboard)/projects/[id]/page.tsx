@@ -67,7 +67,9 @@ export default async function ProjectDetailPage({
 
   const now = new Date();
   const pastDeadline =
-    !project.actualCompletionDate && now > project.rlCommittedDeadline;
+    !!project.rlCommittedDeadline &&
+    !project.actualCompletionDate &&
+    now > project.rlCommittedDeadline;
 
   return (
     <div className="space-y-4">

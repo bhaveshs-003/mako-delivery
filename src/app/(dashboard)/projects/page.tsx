@@ -156,7 +156,9 @@ export default async function ProjectsPage({
                     now,
                   });
                   const pastDeadline =
-                    !p.actualCompletionDate && now > p.rlCommittedDeadline;
+                    !!p.rlCommittedDeadline &&
+                    !p.actualCompletionDate &&
+                    now > p.rlCommittedDeadline;
 
                   return (
                     <tr

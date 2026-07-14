@@ -76,7 +76,9 @@ export async function OverviewTab({
   const activeDays = Math.max(0, elapsed - pausedDays);
 
   // Total timeline days + how many are allocated to milestones.
-  const totalDays = project ? projectTotalDays(project.createdAt, project.rlCommittedDeadline) : 0;
+  const totalDays = project?.rlCommittedDeadline
+    ? projectTotalDays(project.createdAt, project.rlCommittedDeadline)
+    : 0;
   const allocatedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
 
   const cards = [

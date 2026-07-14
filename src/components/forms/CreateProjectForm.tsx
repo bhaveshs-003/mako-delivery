@@ -35,8 +35,6 @@ export function CreateProjectForm() {
   const [leadId, setLeadId] = useState("");
   const [rlIds, setRlIds] = useState<string[]>([]);
   const [resIds, setResIds] = useState<string[]>([]);
-  const [loadTemplate, setLoadTemplate] = useState(true);
-
   useEffect(() => {
     if (!open) return;
     Promise.all([
@@ -52,7 +50,7 @@ export function CreateProjectForm() {
       .catch(() => toast.error("Failed to load assignable users"));
   }, [open]);
 
-  const valid = title.trim() && rlDeadline;
+  const valid = title.trim();
 
   async function submit() {
     setLoading(true);
@@ -63,12 +61,11 @@ export function CreateProjectForm() {
           title,
           description,
           type,
-          rlCommittedDeadline: rlDeadline,
+          rlCommittedDeadline: rlDeadline || null,
           makoInternalDeadline: makoDeadline || null,
           projectLeadId: leadId || null,
           rlConsultantIds: rlIds,
           resourceIds: resIds,
-          loadMilestonesFromTemplate: loadTemplate,
         }),
       });
       toast.success("Project created");
@@ -91,7 +88,6 @@ export function CreateProjectForm() {
     setLeadId("");
     setRlIds([]);
     setResIds([]);
-    setLoadTemplate(true);
   }
 
   function toggleMulti(list: string[], setList: (v: string[]) => void, id: string) {
@@ -134,7 +130,7 @@ export function CreateProjectForm() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="RL Committed Deadline" required hint="What RL promised the client (fixed)">
+            <Field label="RL Committed Deadline" hint="Optional — can be set later">
               <Input type="date" value={rlDeadline} onChange={(e) => setRlDeadline(e.target.value)} />
             </Field>
             <Field label="Mako Internal Deadline" hint="Mako's working target (adjustable)">
@@ -153,10 +149,10 @@ export function CreateProjectForm() {
             <MultiPicker users={resources} selected={resIds} onToggle={(id) => toggleMulti(resIds, setResIds, id)} />
           </Field>
 
-          <label className="flex items-center gap-2 text-sm text-navy">
-            <input type="checkbox" checked={loadTemplate} onChange={(e) => setLoadTemplate(e.target.checked)} />
-            Load lifecycle milestones from the active template
-          </label>
+          <p className="rounded-md border border-line bg-surface-2/50 px-3 py-2 text-xs text-muted">
+            No milestones are pre-loaded. After creating the project, add
+            milestones on the Lifecycle tab and submit each to the RL POC for approval.
+          </p>
         </div>
 
         <DialogFooter>

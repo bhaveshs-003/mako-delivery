@@ -56,7 +56,7 @@ export async function POST(req: Request) {
           title: input.title,
           description: input.description || null,
           type: input.type,
-          rlCommittedDeadline: input.rlCommittedDeadline,
+          rlCommittedDeadline: input.rlCommittedDeadline ?? null,
           makoInternalDeadline: input.makoInternalDeadline ?? null,
           rlProjectId: input.rlProjectId || null,
           templateSnapshotId: template?.id ?? null,
@@ -77,19 +77,9 @@ export async function POST(req: Request) {
         },
       });
 
-      // Optionally seed milestones from the frozen template stages.
-      if (input.loadMilestonesFromTemplate && template) {
-        const stages = template.stages as { name: string; order: number }[];
-        await tx.milestone.createMany({
-          data: stages.map((s) => ({
-            projectId: p.id,
-            parentStage: s.name,
-            name: s.name,
-            sortOrder: s.order,
-            createdBy: user.id,
-          })),
-        });
-      }
+      // No milestones are seeded from the template. The PM creates milestones
+      // manually and submits each to the RL POC for approval. (templateSnapshotId
+      // above still records which template version was active, for reference.)
 
       await writeAudit(
         {

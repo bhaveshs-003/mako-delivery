@@ -40,16 +40,19 @@ export async function POST(req: Request) {
 
   // ── Time-allocation hierarchy ─────────────────────────────────────────────
   if (input.allocatedDays != null) {
-    const total = projectTotalDays(project.createdAt, project.rlCommittedDeadline);
-    const existing = await prisma.milestone.aggregate({
-      where: { projectId: input.projectId, isArchived: false },
-      _sum: { allocatedDays: true },
-    });
-    const used = existing._sum.allocatedDays ?? 0;
-    if (used + input.allocatedDays > total)
-      return badRequest(
-        `Over-allocates the project timeline: ${used} of ${total} day(s) already allocated, ${total - used} remaining.`
-      );
+    // Only enforce the project cap when a timeline deadline is set.
+    if (project.rlCommittedDeadline) {
+      const total = projectTotalDays(project.createdAt, project.rlCommittedDeadline);
+      const existing = await prisma.milestone.aggregate({
+        where: { projectId: input.projectId, isArchived: false },
+        _sum: { allocatedDays: true },
+      });
+      const used = existing._sum.allocatedDays ?? 0;
+      if (used + input.allocatedDays > total)
+        return badRequest(
+          `Over-allocates the project timeline: ${used} of ${total} day(s) already allocated, ${total - used} remaining.`
+        );
+    }
 
     const subSum = input.subtasks.reduce((s, t) => s + (t.allocatedDays ?? 0), 0);
     if (subSum > input.allocatedDays)

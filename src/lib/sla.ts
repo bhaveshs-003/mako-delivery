@@ -47,7 +47,7 @@ export type ProjectHealth = "on_track" | "at_risk" | "delayed";
 
 export function deriveProjectHealth(input: {
   status: string;
-  rlCommittedDeadline: Date;
+  rlCommittedDeadline: Date | null;
   makoInternalDeadline?: Date | null;
   actualCompletionDate?: Date | null;
   hasBreachedDependency: boolean;
@@ -55,12 +55,13 @@ export function deriveProjectHealth(input: {
   now?: Date;
 }): ProjectHealth {
   const now = input.now ?? new Date();
+  const deadline = input.rlCommittedDeadline;
 
   // Delayed: any breached dependency OR past deadline OR paused.
   if (
     input.hasBreachedDependency ||
     input.status === "paused" ||
-    (!input.actualCompletionDate && now > input.rlCommittedDeadline)
+    (!!deadline && !input.actualCompletionDate && now > deadline)
   ) {
     return "delayed";
   }
@@ -68,8 +69,9 @@ export function deriveProjectHealth(input: {
   // At risk: dependency within 1 day of breach, or timeline within 3 days.
   const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
   const nearDeadline =
+    !!deadline &&
     !input.actualCompletionDate &&
-    input.rlCommittedDeadline.getTime() - now.getTime() <= threeDaysMs;
+    deadline.getTime() - now.getTime() <= threeDaysMs;
   if (input.hasDependencyNearBreach || nearDeadline) {
     return "at_risk";
   }

@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { SubtaskStatusControl } from "@/components/projects/SubtaskStatusControl";
 import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusControl";
+import { SubmitMilestoneApproval } from "@/components/projects/SubmitMilestoneApproval";
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
@@ -68,7 +69,7 @@ export async function LifecycleTab({
   ]);
 
   // Planning-day budget: total project days vs. what's allocated to milestones.
-  const totalDays = project
+  const totalDays = project?.rlCommittedDeadline
     ? projectTotalDays(project.createdAt, project.rlCommittedDeadline)
     : 0;
   const usedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
@@ -223,7 +224,16 @@ export async function LifecycleTab({
                                 )}
                               </div>
                             </div>
-                            <div className="shrink-0">
+                            <div className="flex shrink-0 items-center gap-2">
+                              {canManage &&
+                                (m.approvalStatus === "not_required" ||
+                                  m.approvalStatus === "rejected") && (
+                                  <SubmitMilestoneApproval
+                                    projectId={projectId}
+                                    milestoneId={m.id}
+                                    resubmit={m.approvalStatus === "rejected"}
+                                  />
+                                )}
                               {canManage ? (
                                 <MilestoneStatusControl milestoneId={m.id} status={m.status} />
                               ) : (

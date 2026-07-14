@@ -129,7 +129,8 @@ export async function getDashboardMetrics(
     }
 
     // Health signal.
-    const past = !p.actualCompletionDate && now > p.rlCommittedDeadline;
+    const past =
+      !!p.rlCommittedDeadline && !p.actualCompletionDate && now > p.rlCommittedDeadline;
     if (hasBreach || p.status === "paused" || past) delayed++;
     else if (hasNearBreach) atRisk++;
   }

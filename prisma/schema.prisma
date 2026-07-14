@@ -215,7 +215,7 @@ model Project {
   status      ProjectStatus @default(not_started)
 
   // The THREE timelines — core to the entire platform
-  rlCommittedDeadline  DateTime // what RL promised the client (fixed)
+  rlCommittedDeadline  DateTime? // what RL promised the client (optional at creation)
   makoInternalDeadline DateTime? // Mako's own working target (adjustable)
   actualCompletionDate DateTime? // when it actually finished
 

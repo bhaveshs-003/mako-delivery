@@ -48,9 +48,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         },
       });
 
+      // Auto-adjust only if there's a base deadline to extend from.
       let newDeadline: Date | null = null;
-      if (approved && cr.timelineImpactDays && cr.timelineImpactDays > 0) {
-        const base = cr.project.makoInternalDeadline ?? cr.project.rlCommittedDeadline;
+      const base = cr.project.makoInternalDeadline ?? cr.project.rlCommittedDeadline;
+      if (approved && cr.timelineImpactDays && cr.timelineImpactDays > 0 && base) {
         newDeadline = addBusinessDaysTo(base, cr.timelineImpactDays);
         await tx.project.update({
           where: { id: cr.projectId },

@@ -74,6 +74,8 @@ export async function PATCH(
       case "start": {
         if (project.status !== "not_started")
           return badRequest("Only a not-started project can be started");
+        if (!project.scopeApproved)
+          return badRequest("The scope understanding must be approved by RL before the project can be started");
         const updated = await prisma.$transaction(async (tx) => {
           const u = await tx.project.update({ where: { id: project.id }, data: { status: "in_progress" } });
           await writeAudit({ actor, action: "project.start", entityType: "project", entityId: project.id, before: { status: "not_started" }, after: { status: "in_progress" } }, tx);

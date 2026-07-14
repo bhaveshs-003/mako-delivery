@@ -106,18 +106,18 @@ async function main() {
   }
 
   // ── Users: ONE account per role, for easy QA ──────────────────────────────
-  const userSpecs: { email: string; name: string; role: UserRole }[] = [
-    { email: "super@mako.dev", name: "Sarah Chen", role: "super_admin" },
-    { email: "admin@mako.dev", name: "Michael Torres", role: "admin" },
-    { email: "priya@mako.dev", name: "Priya Sharma", role: "sub_admin" },
-    { email: "john@rocketlane.dev", name: "John Doe", role: "rl_user" },
-    { email: "raj@mako.dev", name: "Raj Patel", role: "resource" },
+  const userSpecs: { email: string; name: string; role: UserRole; designation?: string }[] = [
+    { email: "super@mako.dev", name: "Sarah Chen", role: "super_admin", designation: "Head of Delivery" },
+    { email: "admin@mako.dev", name: "Michael Torres", role: "admin", designation: "Delivery Manager" },
+    { email: "priya@mako.dev", name: "Priya Sharma", role: "sub_admin", designation: "Project Manager" },
+    { email: "john@rocketlane.dev", name: "John Doe", role: "rl_user", designation: "RL Consultant" },
+    { email: "raj@mako.dev", name: "Raj Patel", role: "resource", designation: "Software Engineer" },
   ];
 
   const users: Record<string, { id: string; email: string; role: UserRole; name: string }> = {};
   for (const spec of userSpecs) {
     const u = await prisma.user.create({
-      data: { email: spec.email, name: spec.name, role: spec.role, passwordHash: PASSWORD, lastLoginAt: subDays(NOW, 1) },
+      data: { email: spec.email, name: spec.name, role: spec.role, designation: spec.designation ?? null, passwordHash: PASSWORD, lastLoginAt: subDays(NOW, 1) },
     });
     users[spec.email] = { id: u.id, email: u.email, role: u.role, name: u.name };
   }
@@ -163,6 +163,15 @@ async function main() {
         templateSnapshotId: templateIds[spec.type],
         projectLeadId: users[leadEmail].id,
         createdBy: users["admin@mako.dev"].id,
+        // Demo projects have an approved scope + approved milestone plan so the
+        // gates are open and the lifecycle is populated.
+        scopeApproved: true,
+        milestonePlanStatus: "approved",
+        milestonePlanSubmittedBy: users[leadEmail].id,
+        milestonePlanSubmittedAt: subDays(NOW, 7),
+        milestonePlanDecidedBy: users[rlEmail].id,
+        milestonePlanDecidedAt: subDays(NOW, 6),
+        milestonePlanApprovalDays: 1,
         rlConsultants: {
           create: [{ userId: users[rlEmail].id, assignedBy: users["admin@mako.dev"].id }],
         },
@@ -181,6 +190,25 @@ async function main() {
       metadata: { seed: true },
     });
 
+    // Approved scope-understanding document (opens the milestone gate).
+    await prisma.scopeDocument.create({
+      data: {
+        projectId: project.id,
+        filename: "scope-understanding.pdf",
+        fileKey: `seed/${project.id}-scope-understanding.pdf`,
+        fileSize: BigInt(48_000),
+        mimeType: "application/pdf",
+        note: "Initial scope understanding shared with RL for sign-off.",
+        status: "approved",
+        submittedById: users[leadEmail].id,
+        submittedAt: subDays(NOW, 9),
+        decidedById: users[rlEmail].id,
+        decidedAt: subDays(NOW, 8),
+        decisionComment: "Scope looks good — approved.",
+        approvalDurationDays: 1,
+      },
+    });
+
     // ── Milestones from the first few template stages ────────────────────────
     const stageNames = TEMPLATES[spec.type].slice(0, 4);
     let mIdx = 0;
@@ -194,8 +222,8 @@ async function main() {
           ownerId: users[resourceEmail].id,
           dueDate: addDays(NOW, mIdx * 7 - 3),
           status: status as never,
-          approvalStatus: mIdx === 1 ? "pending" : "not_required",
-          approvalSlaStartedAt: mIdx === 1 ? subDays(NOW, 4) : null,
+          type: "main_scope",
+          approvalStatus: "not_required",
           sortOrder: mIdx,
           createdBy: users[leadEmail].id,
           subtasks: {
@@ -213,26 +241,44 @@ async function main() {
         },
       });
 
-      // Approval request on the ongoing, pending-approval milestone.
-      if (mIdx === 1) {
-        await prisma.approvalRequest.create({
-          data: {
-            projectId: project.id,
-            milestoneId: milestone.id,
-            requestedById: users[leadEmail].id,
-            requestedAt: subDays(NOW, 4),
-            requestComment: `Please review ${stage} output and confirm accuracy.`,
-            status: projIndex % 2 === 0 ? "pending" : "approved",
-            decidedBy: projIndex % 2 === 0 ? null : users[rlEmail].id,
-            decidedAt: projIndex % 2 === 0 ? null : subDays(NOW, 2),
-            decisionComment: projIndex % 2 === 0 ? null : "Reviewed and approved.",
-            slaDeadline: subDays(NOW, 1),
-            slaBreached: projIndex % 2 === 0,
-          },
-        });
-      }
       mIdx++;
     }
+
+    // ── A post-approval Change Request milestone (individually approved) ──────
+    const crMilestone = await prisma.milestone.create({
+      data: {
+        projectId: project.id,
+        name: "Additional integration endpoint",
+        description: "Scope added after plan approval via change request.",
+        type: "change_request",
+        ownerId: users[resourceEmail].id,
+        allocatedDays: 3,
+        dueDate: addDays(NOW, 20),
+        status: projIndex % 2 === 0 ? "yet_to_start" : "ongoing",
+        approvalStatus: projIndex % 2 === 0 ? "pending" : "approved",
+        approvedBy: projIndex % 2 === 0 ? null : users[rlEmail].id,
+        approvedAt: projIndex % 2 === 0 ? null : subDays(NOW, 2),
+        approvalDurationDays: projIndex % 2 === 0 ? null : 2,
+        approvalSlaStartedAt: subDays(NOW, 4),
+        sortOrder: mIdx,
+        createdBy: users[leadEmail].id,
+      },
+    });
+    await prisma.approvalRequest.create({
+      data: {
+        projectId: project.id,
+        milestoneId: crMilestone.id,
+        requestedById: users[leadEmail].id,
+        requestedAt: subDays(NOW, 4),
+        requestComment: "Please approve the added change-request milestone.",
+        status: projIndex % 2 === 0 ? "pending" : "approved",
+        decidedBy: projIndex % 2 === 0 ? null : users[rlEmail].id,
+        decidedAt: projIndex % 2 === 0 ? null : subDays(NOW, 2),
+        decisionComment: projIndex % 2 === 0 ? null : "Reviewed and approved.",
+        slaDeadline: subDays(NOW, 1),
+        slaBreached: projIndex % 2 === 0,
+      },
+    });
 
     // ── Dependencies (some breached, with root causes) ───────────────────────
     const depDefs = [

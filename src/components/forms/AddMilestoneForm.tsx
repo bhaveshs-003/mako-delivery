@@ -14,23 +14,31 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
+import { DayStepper } from "@/components/ui/day-stepper";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 import { cn } from "@/lib/utils";
+import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
 
 type Person = { id: string; name: string };
 type SubtaskDraft = { title: string; assignedToId: string; days: string };
+type MilestoneType = "main_scope" | "change_request" | "delta_scope";
 
 export function AddMilestoneForm({
   projectId,
   resources,
   totalDays,
   usedDays,
+  planApproved,
+  changeRequests = [],
 }: {
   projectId: string;
   resources: Person[];
   totalDays: number;
   usedDays: number;
+  /** After plan approval, only change-request / delta-scope milestones may be added. */
+  planApproved: boolean;
+  changeRequests?: { id: string; label: string }[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -39,8 +47,9 @@ export function AddMilestoneForm({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [stage, setStage] = useState("");
+  const [type, setType] = useState<MilestoneType>(planApproved ? "change_request" : "main_scope");
+  const [changeRequestId, setChangeRequestId] = useState("");
   const [ownerId, setOwnerId] = useState("");
-  const [dueDate, setDueDate] = useState("");
   const [days, setDays] = useState("");
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([]);
 
@@ -53,7 +62,8 @@ export function AddMilestoneForm({
   const valid = name.trim() && !overProject && !overMilestone && subtasks.every((s) => s.title.trim());
 
   function reset() {
-    setName(""); setDescription(""); setStage(""); setOwnerId(""); setDueDate(""); setDays("");
+    setName(""); setDescription(""); setStage(""); setOwnerId(""); setDays("");
+    setType(planApproved ? "change_request" : "main_scope"); setChangeRequestId("");
     setSubtasks([]);
   }
 
@@ -71,8 +81,9 @@ export function AddMilestoneForm({
           name,
           description: description || undefined,
           parentStage: stage || undefined,
+          type,
+          changeRequestId: type !== "main_scope" && changeRequestId ? changeRequestId : null,
           ownerId: ownerId || null,
-          dueDate: dueDate || null,
           allocatedDays: days === "" ? null : Number(days),
           subtasks: subtasks
             .filter((s) => s.title.trim())
@@ -116,6 +127,30 @@ export function AddMilestoneForm({
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
+            <Field label="Milestone type">
+              <Select value={type} onChange={(e) => setType(e.target.value as MilestoneType)}>
+                <option value="main_scope" disabled={planApproved}>{MILESTONE_TYPE_LABELS.main_scope}</option>
+                <option value="change_request" disabled={!planApproved}>{MILESTONE_TYPE_LABELS.change_request}</option>
+                <option value="delta_scope" disabled={!planApproved}>{MILESTONE_TYPE_LABELS.delta_scope}</option>
+              </Select>
+            </Field>
+            {type !== "main_scope" && changeRequests.length > 0 ? (
+              <Field label="Link change request" hint="Optional">
+                <Select value={changeRequestId} onChange={(e) => setChangeRequestId(e.target.value)}>
+                  <option value="">— None —</option>
+                  {changeRequests.map((c) => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <Field label="Stage" hint="Groups it under a lifecycle stage">
+                <Input value={stage} onChange={(e) => setStage(e.target.value)} placeholder="Optional" />
+              </Field>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <Field label="Assign to (resource)">
               <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
                 <option value="">— Unassigned —</option>
@@ -124,27 +159,17 @@ export function AddMilestoneForm({
                 ))}
               </Select>
             </Field>
-            <Field label="Stage" hint="Groups it under a lifecycle stage">
-              <Input value={stage} onChange={(e) => setStage(e.target.value)} placeholder="Optional" />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <Field
               label="Allocated Days"
-              hint={`${remainingBefore} of ${totalDays} project days unallocated`}
-              error={overProject ? `Only ${remainingBefore} project day(s) remain` : undefined}
+              hint="Due date is derived from the days allocated"
             >
-              <Input
-                type="number"
-                min={0}
+              <DayStepper
                 value={days}
-                onChange={(e) => setDays(e.target.value)}
-                className={overProject ? "border-danger" : ""}
+                onChange={setDays}
+                poolTotal={totalDays}
+                poolUsedByOthers={usedDays}
+                over={overProject}
               />
-            </Field>
-            <Field label="Due Date">
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </Field>
           </div>
 

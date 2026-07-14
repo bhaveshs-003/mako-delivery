@@ -172,6 +172,24 @@ enum MilestonePlanStatus {
   rejected
 }
 
+// A milestone's scope classification. main_scope milestones are part of the
+// original plan (approved as a whole); change_request / delta_scope milestones
+// are added AFTER plan approval and each carry their own approval.
+enum MilestoneType {
+  main_scope
+  change_request
+  delta_scope
+}
+
+// Lifecycle of a project's Scope Understanding document. The latest doc's status
+// gates milestone creation and project start.
+enum ScopeStatus {
+  pending
+  approved
+  rejected
+  superseded
+}
+
 // ---------------------------------------------------------------------------
 // USERS & AUTH  (§2.1)
 // ---------------------------------------------------------------------------
@@ -187,6 +205,7 @@ model User {
   deactivatedAt  DateTime?
   deactivatedBy  String? // scalar actor stamp
   lastLoginAt    DateTime?
+  designation    String? // free-text job title, e.g. "Software Engineer" (display only)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
@@ -243,6 +262,11 @@ model Project {
   milestonePlanDecidedAt       DateTime?
   milestonePlanDecidedBy       String?
   milestonePlanDecisionComment String?
+  milestonePlanApprovalDays    Int? // days RL took to decide the plan (submit → decide)
+
+  // Scope Understanding gate: the latest scope doc must be approved before
+  // milestones can be created or the project started (denormalized for fast gating).
+  scopeApproved Boolean @default(false)
 
   // Pause tracking (current state; full history in PauseHistory)
   currentPauseReasonCategory AttributionParty?
@@ -269,12 +293,43 @@ model Project {
   ticketLinks    TicketProject[]
   pauseHistory   PauseHistory[]
   notifications  Notification[]
+  scopeDocuments ScopeDocument[]
 
   @@index([status])
   @@index([type])
   @@index([projectLeadId])
   @@index([isArchived])
   @@map("projects")
+}
+
+// Scope Understanding document submitted by the PM and approved/rejected by the
+// RL POC. History is preserved: a rejection lets the PM submit a new doc, which
+// supersedes the prior one. Actor identity stored as scalar UUID stamps.
+model ScopeDocument {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  filename String
+  fileKey  String // storage key
+  fileSize BigInt
+  mimeType String
+  note     String? // optional submitter note
+
+  status          ScopeStatus @default(pending)
+  submittedById   String
+  submittedAt     DateTime    @default(now())
+  decidedById     String?
+  decidedAt       DateTime?
+  decisionComment String?
+  approvalDurationDays Int? // days RL took to decide (submit → decide)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@map("scope_documents")
 }
 
 model ProjectRlConsultant {
@@ -331,6 +386,10 @@ model Milestone {
   name        String
   description String?
 
+  // Scope classification. main_scope = part of the original approved plan;
+  // change_request / delta_scope = added post-approval, each individually approved.
+  type MilestoneType @default(main_scope)
+
   ownerId String? // assigned Mako resource
   owner   User?   @relation("MilestoneOwner", fields: [ownerId], references: [id])
 
@@ -346,6 +405,11 @@ model Milestone {
   approvedAt           DateTime?
   approvalComment      String?
   approvalSlaStartedAt DateTime?
+  approvalDurationDays Int? // days RL took to decide this milestone's approval
+
+  // For change_request / delta_scope milestones: the CR they originated from.
+  changeRequestId String?
+  changeRequest   ChangeRequest? @relation(fields: [changeRequestId], references: [id], onDelete: SetNull)
 
   meetingLink String?
 
@@ -569,6 +633,7 @@ model ChangeRequest {
 
   comments    Comment[]
   attachments Attachment[]
+  milestones  Milestone[]
 
   @@index([projectId])
   @@index([status])

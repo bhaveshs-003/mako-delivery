@@ -48,6 +48,12 @@ export const PROJECT_TYPE_LABELS: Record<string, string> = {
   custom_app: "Custom App",
 };
 
+export const MILESTONE_TYPE_LABELS: Record<string, string> = {
+  main_scope: "Main Scope",
+  change_request: "Change Request",
+  delta_scope: "Delta Scope",
+};
+
 export const STATUS_LABELS: Record<string, string> = {
   not_started: "Not Started",
   in_progress: "In Progress",
@@ -75,6 +81,7 @@ export const STATUS_LABELS: Record<string, string> = {
   done: "Done",
   in_progress_subtask: "In Progress",
   draft: "Draft",
+  superseded: "Superseded",
   pending_rl_approval: "Pending RL Approval",
   late: "Late",
   on_time: "On Time",

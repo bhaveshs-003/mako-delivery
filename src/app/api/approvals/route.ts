@@ -32,6 +32,10 @@ export async function POST(req: Request) {
     where: { id: input.milestoneId, projectId: input.projectId },
   });
   if (!milestone) return notFound("Milestone not found");
+  // Main-scope milestones are approved as part of the whole milestone plan, not
+  // individually; only change-request / delta-scope milestones are approved here.
+  if (milestone.type === "main_scope")
+    return badRequest("Main-scope milestones are approved via the whole milestone plan");
 
   try {
     // SLA deadline anchored at creation (spec §7.1: stored absolute, not recomputed).

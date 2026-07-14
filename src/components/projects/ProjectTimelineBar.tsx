@@ -1,5 +1,6 @@
 import { ATTRIBUTION_COLORS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
+import { TimelineDaysDonut } from "@/components/projects/TimelineDaysDonut";
 
 /**
  * Compact visual of the RL vs Mako timelines on a shared date axis, with a
@@ -41,54 +42,57 @@ export function ProjectTimelineBar({
   ];
 
   return (
-    <div className="space-y-1.5">
-      {rows.map((r) => {
-        const hasBar = r.start && r.end;
-        return (
-          <div key={r.label} className="flex items-center gap-2">
-            <span className="w-9 shrink-0 text-2xs font-medium text-muted">{r.label}</span>
-            <div className="relative h-4 flex-1 overflow-hidden rounded bg-surface-2">
-              {todayIn && (
-                <span className="absolute inset-y-0 z-10 w-px bg-ink/40" style={{ left: `${pct(now)}%` }} />
-              )}
-              {hasBar ? (
-                <div
-                  className="absolute inset-y-[3px] rounded-sm"
-                  style={{
-                    left: `${pct(r.start!)}%`,
-                    width: `${Math.max(1.5, pct(r.end!) - pct(r.start!))}%`,
-                    backgroundColor: r.color,
-                  }}
-                  title={`${formatDate(r.start)} → ${formatDate(r.end)}`}
-                />
-              ) : (
-                (r.start || r.end) && (
-                  <span
-                    className="absolute inset-y-[3px] w-1 rounded-sm"
-                    style={{ left: `${pct((r.start || r.end)!)}%`, backgroundColor: r.color }}
-                  />
-                )
-              )}
-              {actual && (
-                <span
-                  className="absolute top-1/2 z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[1px] bg-success ring-2 ring-surface"
-                  style={{ left: `${pct(actual)}%` }}
-                  title={`Completed ${formatDate(actual)}`}
-                />
-              )}
-            </div>
-            <span className="tabular w-16 shrink-0 text-right text-2xs font-medium text-ink">
-              {r.days != null ? `${r.days} Days` : "—"}
-            </span>
-          </div>
-        );
-      })}
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+      {/* Compact days donut */}
+      <TimelineDaysDonut rlDays={rlDays} makoDays={makoDays} />
 
-      {/* axis */}
-      <div className="flex items-center justify-between pl-11 pr-16 text-2xs text-muted">
-        <span>{formatDate(new Date(min))}</span>
-        {todayIn && <span className="text-ink-2">Today</span>}
-        <span>{formatDate(new Date(max))}</span>
+      {/* Date-axis bars */}
+      <div className="min-w-[220px] flex-1 space-y-1.5">
+        {rows.map((r) => {
+          const hasBar = r.start && r.end;
+          return (
+            <div key={r.label} className="flex items-center gap-2">
+              <span className="w-9 shrink-0 text-2xs font-medium text-muted">{r.label}</span>
+              <div className="relative h-4 flex-1 overflow-hidden rounded bg-surface-2">
+                {todayIn && (
+                  <span className="absolute inset-y-0 z-10 w-px bg-ink/40" style={{ left: `${pct(now)}%` }} />
+                )}
+                {hasBar ? (
+                  <div
+                    className="absolute inset-y-[3px] rounded-sm"
+                    style={{
+                      left: `${pct(r.start!)}%`,
+                      width: `${Math.max(1.5, pct(r.end!) - pct(r.start!))}%`,
+                      backgroundColor: r.color,
+                    }}
+                    title={`${formatDate(r.start)} → ${formatDate(r.end)}`}
+                  />
+                ) : (
+                  (r.start || r.end) && (
+                    <span
+                      className="absolute inset-y-[3px] w-1 rounded-sm"
+                      style={{ left: `${pct((r.start || r.end)!)}%`, backgroundColor: r.color }}
+                    />
+                  )
+                )}
+                {actual && (
+                  <span
+                    className="absolute top-1/2 z-10 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[1px] bg-success ring-2 ring-surface"
+                    style={{ left: `${pct(actual)}%` }}
+                    title={`Completed ${formatDate(actual)}`}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* axis */}
+        <div className="flex items-center justify-between pl-11 text-2xs text-muted">
+          <span>{formatDate(new Date(min))}</span>
+          {todayIn && <span className="text-ink-2">Today</span>}
+          <span>{formatDate(new Date(max))}</span>
+        </div>
       </div>
     </div>
   );

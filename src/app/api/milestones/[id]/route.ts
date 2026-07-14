@@ -5,6 +5,7 @@ import { patchMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
+import { recomputeDueDates } from "@/lib/milestone-scheduling";
 
 // PATCH /api/milestones/[id] — edit or change work status.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -29,12 +30,44 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!canActOnProject(user, milestone.project))
     return badRequest("You are not assigned to this project");
 
-  // A milestone is locked from structural edits once it is submitted (pending)
-  // or approved. Work-status changes remain allowed (execution).
+  // A milestone is locked from structural edits/reordering once its plan (main
+  // scope) or its own approval (CR/delta) is submitted or approved. Work-status
+  // changes remain allowed (execution).
+  const planLocked =
+    milestone.project.milestonePlanStatus === "approved" ||
+    milestone.project.milestonePlanStatus === "pending_approval";
   const mLocked =
-    milestone.approvalStatus === "approved" || milestone.approvalStatus === "pending";
-  if (mLocked && (body.action === "edit" || body.action === "assign_owner"))
+    milestone.type === "main_scope"
+      ? planLocked
+      : milestone.approvalStatus === "approved" || milestone.approvalStatus === "pending";
+  if (mLocked && (body.action === "edit" || body.action === "assign_owner" || body.action === "reorder"))
     return badRequest("This milestone is locked (submitted or approved) and can't be edited");
+
+  // ── Reorder: swap sortOrder with the adjacent sibling ─────────────────────
+  if (body.action === "reorder") {
+    if (!body.direction) return badRequest("A direction is required to reorder");
+    const siblings = await prisma.milestone.findMany({
+      where: { projectId: milestone.projectId, isArchived: false },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true, sortOrder: true },
+    });
+    const idx = siblings.findIndex((s) => s.id === milestone.id);
+    const swapIdx = body.direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= siblings.length)
+      return badRequest("Milestone is already at the edge");
+    const a = siblings[idx];
+    const b = siblings[swapIdx];
+    await prisma.$transaction(async (tx) => {
+      await tx.milestone.update({ where: { id: a.id }, data: { sortOrder: b.sortOrder } });
+      await tx.milestone.update({ where: { id: b.id }, data: { sortOrder: a.sortOrder } });
+      await writeAudit(
+        { actor: toAuditActor(user, req), action: "milestone.reorder", entityType: "milestone", entityId: a.id, after: { direction: body.direction }, metadata: { projectId: milestone.projectId } },
+        tx
+      );
+      await recomputeDueDates(tx, milestone.projectId);
+    });
+    return ok({ reordered: true });
+  }
 
   // Spec §7.2: a milestone cannot be 'submitted' while it has blocked subtasks.
   if (body.action === "status" && body.status === "submitted") {
@@ -123,6 +156,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         },
         tx
       );
+      // An edit may change allocated days → re-derive the due-date chain.
+      if (body.action === "edit") await recomputeDueDates(tx, milestone.projectId);
       return m;
     });
     return ok(updated);

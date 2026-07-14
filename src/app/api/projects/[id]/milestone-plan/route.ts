@@ -75,17 +75,32 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (!approved && !body.decisionComment?.trim())
       return badRequest("A reason is required to reject the plan");
 
+    const now = new Date();
+    const approvalDays = project.milestonePlanSubmittedAt
+      ? Math.max(0, Math.round((now.getTime() - project.milestonePlanSubmittedAt.getTime()) / 86400000))
+      : null;
     const updated = await prisma.$transaction(async (tx) => {
       const p = await tx.project.update({
         where: { id: project.id },
         data: {
           milestonePlanStatus: approved ? "approved" : "rejected",
-          milestonePlanDecidedAt: new Date(),
+          milestonePlanDecidedAt: now,
           milestonePlanDecidedBy: user.id,
           milestonePlanDecisionComment: body.decisionComment ?? null,
+          milestonePlanApprovalDays: approved ? approvalDays : null,
         },
       });
-      await writeAudit({ actor, action: approved ? "milestone_plan.approve" : "milestone_plan.reject", entityType: "project", entityId: project.id, before: { status: "pending_approval" }, after: { status: p.milestonePlanStatus } }, tx);
+      // On approval the plan locks and execution begins: the first main-scope
+      // milestone moves to In-Progress; the rest stay Upcoming until worked.
+      if (approved) {
+        const first = await tx.milestone.findFirst({
+          where: { projectId: project.id, isArchived: false, type: "main_scope" },
+          orderBy: { sortOrder: "asc" },
+          select: { id: true },
+        });
+        if (first) await tx.milestone.update({ where: { id: first.id }, data: { status: "ongoing" } });
+      }
+      await writeAudit({ actor, action: approved ? "milestone_plan.approve" : "milestone_plan.reject", entityType: "project", entityId: project.id, before: { status: "pending_approval" }, after: { status: p.milestonePlanStatus, approvalDays } }, tx);
       return p;
     });
 

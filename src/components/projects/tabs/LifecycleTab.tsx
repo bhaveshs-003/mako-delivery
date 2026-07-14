@@ -6,15 +6,18 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { SubtaskStatusControl } from "@/components/projects/SubtaskStatusControl";
 import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusControl";
 import { SubmitMilestoneApproval } from "@/components/projects/SubmitMilestoneApproval";
+import { MilestoneReorder } from "@/components/projects/MilestoneReorder";
+import { MilestonePlanSubmit } from "@/components/projects/MilestonePlanSubmit";
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { EditMilestoneForm } from "@/components/forms/EditMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
 import { allocationPoolDays } from "@/lib/allocation";
 import { formatDate } from "@/lib/utils";
-import { ListChecks, AlertTriangle, Check } from "lucide-react";
+import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
+import { ListChecks, AlertTriangle, ShieldAlert } from "lucide-react";
 
-// Small status → dot color, for the leading indicators in the hierarchy.
+// Small status → dot color, for the leading indicators in the list.
 const DOT: Record<string, string> = {
   completed: "bg-success",
   done: "bg-success",
@@ -30,11 +33,13 @@ const DOT: Record<string, string> = {
 export async function LifecycleTab({
   projectId,
   canManage,
+  canDecidePlan = false,
   userId,
   userRole,
 }: {
   projectId: string;
   canManage: boolean;
+  canDecidePlan?: boolean;
   userId: string;
   userRole: UserRole;
 }) {
@@ -48,7 +53,7 @@ export async function LifecycleTab({
     },
   });
 
-  const [project, commentRows, attachmentRows, projectResources] = await Promise.all([
+  const [project, commentRows, attachmentRows, projectResources, approvedCRs] = await Promise.all([
     prisma.project.findUnique({
       where: { id: projectId },
       select: {
@@ -56,6 +61,10 @@ export async function LifecycleTab({
         rlCommittedDeadline: true,
         makoStartDate: true,
         makoInternalDeadline: true,
+        scopeApproved: true,
+        milestonePlanStatus: true,
+        milestonePlanApprovalDays: true,
+        milestonePlanDecisionComment: true,
       },
     }),
     prisma.comment.findMany({
@@ -72,26 +81,34 @@ export async function LifecycleTab({
       where: { projectId },
       include: { user: { select: { id: true, name: true } } },
     }),
+    prisma.changeRequest.findMany({
+      where: { projectId, status: "approved" },
+      select: { id: true, scopeDelta: true },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
-  // Planning-day budget: the allocation pool vs. what's allocated to milestones.
   const totalDays = project ? allocationPoolDays(project) : 0;
   const usedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
 
-  // Sequential per-milestone approval: the "active" milestone is the first one
-  // not yet approved. It can be worked/submitted; earlier ones are approved,
-  // later ones are Upcoming until the prior is approved.
-  const flatIndex = new Map(milestones.map((m, i) => [m.id, i]));
-  const activeIdx = milestones.findIndex((m) => m.approvalStatus !== "approved");
+  const scopeApproved = project?.scopeApproved ?? false;
+  const planStatus = (project?.milestonePlanStatus ?? "draft") as
+    | "draft" | "pending_approval" | "approved" | "rejected";
+  const planApproved = planStatus === "approved";
+  const planLocked = planApproved || planStatus === "pending_approval";
+  const mainScopeCount = milestones.filter((m) => m.type === "main_scope").length;
 
   const resources = projectResources.map((r) => ({ id: r.user.id, name: r.user.name }));
+  const changeRequests = approvedCRs.map((c) => ({
+    id: c.id,
+    label: c.scopeDelta.length > 60 ? `${c.scopeDelta.slice(0, 60)}…` : c.scopeDelta,
+  }));
+
   const commentsByMilestone = new Map<string, typeof commentRows>();
   for (const c of commentRows) {
     if (!c.milestoneId) continue;
     (commentsByMilestone.get(c.milestoneId) ?? commentsByMilestone.set(c.milestoneId, []).get(c.milestoneId)!).push(c);
   }
-  // Sign all download URLs in parallel (S3 presign is fast but sequential
-  // awaits still add up when a project has many attachments).
   const signed = await Promise.all(
     attachmentRows.map(async (a) => ({ a, url: await getDownloadUrl(a.fileKey) }))
   );
@@ -100,18 +117,6 @@ export async function LifecycleTab({
     if (!a.milestoneId) continue;
     const list = docsByMilestone.get(a.milestoneId) ?? docsByMilestone.set(a.milestoneId, []).get(a.milestoneId)!;
     list.push({ id: a.id, filename: a.filename, url, uploadedByName: a.uploadedBy.name });
-  }
-
-  // Group milestones by their parent template stage (preserve order).
-  const stages: [string, typeof milestones][] = [];
-  const stageIndex = new Map<string, number>();
-  for (const m of milestones) {
-    const key = m.parentStage ?? "Ungrouped";
-    if (!stageIndex.has(key)) {
-      stageIndex.set(key, stages.length);
-      stages.push([key, []]);
-    }
-    stages[stageIndex.get(key)!][1].push(m);
   }
 
   const doneMilestones = milestones.filter((m) => m.status === "completed").length;
@@ -141,207 +146,197 @@ export async function LifecycleTab({
             </p>
           )}
         </div>
-        {canManage && (
+        {canManage && scopeApproved && (
           <AddMilestoneForm
             projectId={projectId}
             resources={resources}
             totalDays={totalDays}
             usedDays={usedDays}
+            planApproved={planApproved}
+            changeRequests={changeRequests}
           />
         )}
       </div>
 
+      {/* Scope gate notice */}
+      {!scopeApproved && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            The <span className="font-medium">scope understanding</span> must be approved by the RL POC before
+            milestones can be created. Upload it in the <span className="font-medium">Overview</span> tab.
+          </p>
+        </div>
+      )}
+
       {milestones.length === 0 ? (
-        <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones, then submit the plan to RL for approval." />
+        scopeApproved && (
+          <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones, then submit the whole plan to RL for approval." />
+        )
       ) : (
-        <ol className="mt-1">
-          {stages.map(([stage, list], si) => {
-            const total = list.length;
-            const done = list.filter((m) => m.status === "completed").length;
-            const state =
-              done === total ? "complete" : list.some((m) => m.status !== "yet_to_start") ? "active" : "pending";
-            const isLast = si === stages.length - 1;
+        <ol className="space-y-2">
+          {milestones.map((m, idx) => {
+            const subDone = m.subtasks.filter((s) => s.status === "done").length;
+            const overdue = m.dueDate && m.status !== "completed" && new Date(m.dueDate) < now;
+            const isMain = m.type === "main_scope";
+
+            // Structural editing is allowed pre-approval; execution (status) post-approval.
+            const editable = isMain
+              ? canManage && !planLocked
+              : canManage && m.approvalStatus !== "approved" && m.approvalStatus !== "pending";
+            const reorderable = isMain && canManage && !planLocked;
+            const submittable = !isMain && canManage && (m.approvalStatus === "not_required" || m.approvalStatus === "rejected");
+            const executable = canManage && (isMain ? planApproved : m.approvalStatus === "approved");
 
             return (
-              <li key={stage} className="grid grid-cols-[24px_1fr] gap-x-3">
-                {/* Rail + node */}
-                <div className="relative flex justify-center">
-                  {!isLast && (
-                    <span className="absolute left-1/2 top-6 bottom-0 w-px -translate-x-1/2 bg-line" />
-                  )}
-                  <span
-                    className={`relative z-10 mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-2xs font-semibold ring-4 ring-canvas ${
-                      state === "complete"
-                        ? "bg-success text-white"
-                        : state === "active"
-                          ? "bg-brand text-white"
-                          : "border border-line-strong bg-surface text-muted"
-                    }`}
-                  >
-                    {state === "complete" ? <Check className="h-3.5 w-3.5" /> : si + 1}
-                  </span>
+              <li key={m.id} className="rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs">
+                {/* Milestone header */}
+                <div className="flex items-start justify-between gap-3 p-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    {reorderable && (
+                      <MilestoneReorder milestoneId={m.id} isFirst={idx === 0} isLast={idx === milestones.length - 1} />
+                    )}
+                    <span className="tabular mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-2 text-2xs font-semibold text-ink-2">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[m.status] ?? "bg-muted"}`} />
+                        <span className="truncate text-sm font-medium text-ink">{m.name}</span>
+                        {!isMain && (
+                          <span className="shrink-0 rounded-md bg-attr-client/10 px-1.5 py-0.5 text-2xs font-medium text-attr-client">
+                            {MILESTONE_TYPE_LABELS[m.type]}
+                          </span>
+                        )}
+                        {m.allocatedDays != null && (
+                          <span className="tabular shrink-0 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand-ink">
+                            {m.allocatedDays} Days
+                          </span>
+                        )}
+                        {m.approvalStatus !== "not_required" && <StatusBadge status={m.approvalStatus} />}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-4 text-2xs text-muted">
+                        {m.subtasks.length > 0 && <span className="tabular">{subDone}/{m.subtasks.length} subtasks</span>}
+                        {m.dueDate && (
+                          <span className={overdue ? "font-medium text-danger" : ""}>Due {formatDate(m.dueDate)}</span>
+                        )}
+                        {m.approvalDurationDays != null && (
+                          <span className="tabular">Approved in {m.approvalDurationDays}d</span>
+                        )}
+                        {m.owner && (
+                          <span className="inline-flex items-center gap-1">
+                            <UserAvatar name={m.owner.name} deactivated={!m.owner.isActive} size="sm" />
+                            {m.owner.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {editable && (
+                      <EditMilestoneForm
+                        milestoneId={m.id}
+                        resources={resources}
+                        initial={{
+                          name: m.name,
+                          description: m.description ?? "",
+                          ownerId: m.ownerId ?? "",
+                          allocatedDays: m.allocatedDays != null ? String(m.allocatedDays) : "",
+                        }}
+                        initialSubtasks={m.subtasks.map((s) => ({
+                          title: s.title,
+                          assignedToId: s.assignedToId ?? "",
+                          days: s.allocatedDays != null ? String(s.allocatedDays) : "",
+                        }))}
+                        poolTotal={totalDays}
+                        poolUsedByOthers={usedDays - (m.allocatedDays ?? 0)}
+                      />
+                    )}
+                    {submittable && (
+                      <SubmitMilestoneApproval
+                        projectId={projectId}
+                        milestoneId={m.id}
+                        resubmit={m.approvalStatus === "rejected"}
+                      />
+                    )}
+                    {executable ? (
+                      <MilestoneStatusControl milestoneId={m.id} status={m.status} />
+                    ) : (
+                      <StatusBadge status={m.status} />
+                    )}
+                  </div>
                 </div>
 
-                {/* Stage content */}
-                <div className={isLast ? "pb-1" : "pb-5"}>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <h3 className="text-sm font-semibold text-ink">{stage}</h3>
-                    <span className="tabular rounded-full bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-muted">
-                      {done}/{total}
-                    </span>
-                    {state === "complete" && <StatusBadge status="completed" />}
-                  </div>
-
-                  <div className="mt-2 space-y-2">
-                    {list.map((m) => {
-                      const subDone = m.subtasks.filter((s) => s.status === "done").length;
-                      const overdue =
-                        m.dueDate && m.status !== "completed" && new Date(m.dueDate) < now;
-                      const idx = flatIndex.get(m.id) ?? 0;
-                      const mLocked = m.approvalStatus === "approved" || m.approvalStatus === "pending";
-                      const editableM = canManage && !mLocked;
-                      const submittable =
-                        canManage &&
-                        idx === activeIdx &&
-                        (m.approvalStatus === "not_required" || m.approvalStatus === "rejected");
+                {/* Subtasks */}
+                {m.subtasks.length > 0 && (
+                  <div className="space-y-0.5 border-t border-line bg-surface-2/40 px-3 py-2">
+                    {m.subtasks.map((s) => {
+                      const canEditSubtask =
+                        canManage || (userRole === "resource" && s.assignedToId === userId);
                       return (
-                        <div
-                          key={m.id}
-                          className="rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs"
-                        >
-                          {/* Milestone header */}
-                          <div className="flex items-start justify-between gap-3 p-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[m.status] ?? "bg-muted"}`} />
-                                <span className="truncate text-sm font-medium text-ink">{m.name}</span>
-                                {m.allocatedDays != null && (
-                                  <span className="tabular shrink-0 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand-ink">
-                                    {m.allocatedDays}d
-                                  </span>
-                                )}
-                                {m.approvalStatus !== "not_required" && (
-                                  <StatusBadge status={m.approvalStatus} />
-                                )}
-                              </div>
-                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-4 text-2xs text-muted">
-                                {m.subtasks.length > 0 && (
-                                  <span className="tabular">{subDone}/{m.subtasks.length} subtasks</span>
-                                )}
-                                {m.dueDate && (
-                                  <span className={overdue ? "font-medium text-danger" : ""}>
-                                    Due {formatDate(m.dueDate)}
-                                  </span>
-                                )}
-                                {m.owner && (
-                                  <span className="inline-flex items-center gap-1">
-                                    <UserAvatar name={m.owner.name} deactivated={!m.owner.isActive} size="sm" />
-                                    {m.owner.name}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                              {editableM && (
-                                <EditMilestoneForm
-                                  milestoneId={m.id}
-                                  resources={resources}
-                                  initial={{
-                                    name: m.name,
-                                    description: m.description ?? "",
-                                    ownerId: m.ownerId ?? "",
-                                    allocatedDays: m.allocatedDays != null ? String(m.allocatedDays) : "",
-                                    dueDate: m.dueDate ? m.dueDate.toISOString().slice(0, 10) : "",
-                                  }}
-                                  initialSubtasks={m.subtasks.map((s) => ({
-                                    title: s.title,
-                                    assignedToId: s.assignedToId ?? "",
-                                    days: s.allocatedDays != null ? String(s.allocatedDays) : "",
-                                  }))}
-                                />
-                              )}
-                              {submittable && (
-                                <SubmitMilestoneApproval
-                                  projectId={projectId}
-                                  milestoneId={m.id}
-                                  resubmit={m.approvalStatus === "rejected"}
-                                />
-                              )}
-                              {canManage && !mLocked ? (
-                                <MilestoneStatusControl milestoneId={m.id} status={m.status} />
-                              ) : (
-                                <StatusBadge status={m.status} />
-                              )}
-                            </div>
+                        <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md px-1.5 py-1 hover:bg-surface">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[s.status] ?? "bg-muted"}`} />
+                            {s.status === "blocked" && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" />}
+                            <span className="truncate text-sm text-ink-2">{s.title}</span>
+                            {s.assignedTo && <span className="shrink-0 text-2xs text-muted">· {s.assignedTo.name}</span>}
                           </div>
-
-                          {/* Subtasks */}
-                          {m.subtasks.length > 0 && (
-                            <div className="space-y-0.5 border-t border-line bg-surface-2/40 px-3 py-2">
-                              {m.subtasks.map((s) => {
-                                const canEditSubtask =
-                                  canManage || (userRole === "resource" && s.assignedToId === userId);
-                                return (
-                                  <div
-                                    key={s.id}
-                                    className="flex flex-wrap items-center justify-between gap-2 rounded-md px-1.5 py-1 hover:bg-surface"
-                                  >
-                                    <div className="flex min-w-0 items-center gap-2">
-                                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[s.status] ?? "bg-muted"}`} />
-                                      {s.status === "blocked" && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" />}
-                                      <span className="truncate text-sm text-ink-2">{s.title}</span>
-                                      {s.assignedTo && (
-                                        <span className="shrink-0 text-2xs text-muted">· {s.assignedTo.name}</span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {s.allocatedDays != null && (
-                                        <span className="tabular shrink-0 text-2xs text-muted">{s.allocatedDays}d</span>
-                                      )}
-                                      {s.status === "blocked" && s.blockedReason && (
-                                        <span className="max-w-[220px] truncate text-2xs text-danger" title={s.blockedReason}>
-                                          {s.blockedReason}
-                                        </span>
-                                      )}
-                                      {canEditSubtask ? (
-                                        <SubtaskStatusControl subtaskId={s.id} status={s.status} />
-                                      ) : (
-                                        <StatusBadge status={s.status} />
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Owner / comments / documents */}
-                          <div className="border-t border-line px-3 py-2">
-                            <MilestoneDetail
-                              milestoneId={m.id}
-                              ownerId={m.ownerId}
-                              canManage={canManage}
-                              resources={resources}
-                              comments={(commentsByMilestone.get(m.id) ?? []).map((c) => ({
-                                id: c.id,
-                                authorId: c.authorId,
-                                authorName: c.author.name,
-                                content: c.content,
-                                createdAt: c.createdAt.toISOString(),
-                                isEdited: c.isEdited,
-                              }))}
-                              documents={docsByMilestone.get(m.id) ?? []}
-                            />
+                          <div className="flex items-center gap-2">
+                            {s.allocatedDays != null && (
+                              <span className="tabular shrink-0 text-2xs text-muted">{s.allocatedDays} Days</span>
+                            )}
+                            {s.status === "blocked" && s.blockedReason && (
+                              <span className="max-w-[220px] truncate text-2xs text-danger" title={s.blockedReason}>
+                                {s.blockedReason}
+                              </span>
+                            )}
+                            {canEditSubtask ? (
+                              <SubtaskStatusControl subtaskId={s.id} status={s.status} />
+                            ) : (
+                              <StatusBadge status={s.status} />
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
+                )}
+
+                {/* Owner / comments / documents */}
+                <div className="border-t border-line px-3 py-2">
+                  <MilestoneDetail
+                    milestoneId={m.id}
+                    ownerId={m.ownerId}
+                    canManage={canManage}
+                    resources={resources}
+                    comments={(commentsByMilestone.get(m.id) ?? []).map((c) => ({
+                      id: c.id,
+                      authorId: c.authorId,
+                      authorName: c.author.name,
+                      content: c.content,
+                      createdAt: c.createdAt.toISOString(),
+                      isEdited: c.isEdited,
+                    }))}
+                    documents={docsByMilestone.get(m.id) ?? []}
+                  />
                 </div>
               </li>
             );
           })}
         </ol>
+      )}
+
+      {/* Whole-plan approval footer */}
+      {scopeApproved && mainScopeCount > 0 && (
+        <MilestonePlanSubmit
+          projectId={projectId}
+          status={planStatus}
+          milestoneCount={mainScopeCount}
+          decisionComment={project?.milestonePlanDecisionComment ?? null}
+          approvalDays={project?.milestonePlanApprovalDays ?? null}
+          canManage={canManage}
+          canDecide={canDecidePlan}
+        />
       )}
     </div>
   );

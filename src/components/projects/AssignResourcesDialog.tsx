@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users } from "lucide-react";
+import { Users, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,11 +13,18 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Field } from "@/components/ui/form-field";
+import { Input, Field } from "@/components/ui/form-field";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
+import { ROLE_LABELS } from "@/lib/constants";
+import type { UserRole } from "@prisma/client";
 
-type Person = { id: string; name: string; role: string };
+type Person = { id: string; name: string; role: UserRole; designation: string | null };
+
+/** "Software Engineer" (designation) or the RBAC role label as a fallback. */
+function subtitleFor(p: Person): string {
+  return p.designation?.trim() || ROLE_LABELS[p.role] || "";
+}
 
 /**
  * Add/remove project members at any time (spec §5.3 "Assign Resources").
@@ -39,6 +46,8 @@ export function AssignResourcesDialog({
   const [rlUsers, setRlUsers] = useState<Person[]>([]);
   const [resIds, setResIds] = useState<string[]>(currentResourceIds);
   const [rlIds, setRlIds] = useState<string[]>(currentConsultantIds);
+  const [resQuery, setResQuery] = useState("");
+  const [rlQuery, setRlQuery] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -90,15 +99,27 @@ export function AssignResourcesDialog({
         </DialogHeader>
         <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
           <Field label="Mako Resources" hint="Add or remove resources at any time">
+            <Input
+              placeholder="Search by name or role…"
+              value={resQuery}
+              onChange={(e) => setResQuery(e.target.value)}
+              className="mb-2"
+            />
             <Picker
-              people={resources}
+              people={filterPeople(resources, resQuery)}
               selected={resIds}
               onToggle={(id) => toggle(resIds, setResIds, id)}
             />
           </Field>
           <Field label="RL Consultants (POC)">
+            <Input
+              placeholder="Search by name or role…"
+              value={rlQuery}
+              onChange={(e) => setRlQuery(e.target.value)}
+              className="mb-2"
+            />
             <Picker
-              people={rlUsers}
+              people={filterPeople(rlUsers, rlQuery)}
               selected={rlIds}
               onToggle={(id) => toggle(rlIds, setRlIds, id)}
             />
@@ -117,6 +138,14 @@ export function AssignResourcesDialog({
   );
 }
 
+function filterPeople(people: Person[], query: string): Person[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return people;
+  return people.filter(
+    (p) => p.name.toLowerCase().includes(q) || subtitleFor(p).toLowerCase().includes(q)
+  );
+}
+
 function Picker({
   people,
   selected,
@@ -126,9 +155,9 @@ function Picker({
   selected: string[];
   onToggle: (id: string) => void;
 }) {
-  if (people.length === 0) return <p className="text-xs text-muted">No users available.</p>;
+  if (people.length === 0) return <p className="text-xs text-muted">No matching users.</p>;
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-col gap-1.5">
       {people.map((p) => {
         const on = selected.includes(p.id);
         return (
@@ -136,13 +165,23 @@ function Picker({
             key={p.id}
             type="button"
             onClick={() => onToggle(p.id)}
-            className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+            className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
               on
-                ? "border-brand bg-brand text-white"
-                : "border-line bg-surface text-ink-2 hover:border-line-strong"
+                ? "border-brand bg-brand/5"
+                : "border-line bg-surface hover:border-line-strong"
             }`}
           >
-            {p.name}
+            <span className="flex items-center gap-2">
+              <span
+                className={`flex h-4 w-4 items-center justify-center rounded-[4px] border ${
+                  on ? "border-brand bg-brand text-white" : "border-line-strong"
+                }`}
+              >
+                {on && <Check className="h-3 w-3" />}
+              </span>
+              <span className="font-medium text-ink">{p.name}</span>
+              <span className="text-2xs text-muted">— {subtitleFor(p)}</span>
+            </span>
           </button>
         );
       })}

@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
+import { DayStepper } from "@/components/ui/day-stepper";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,8 @@ export function EditMilestoneForm({
   resources,
   initial,
   initialSubtasks,
+  poolTotal = 0,
+  poolUsedByOthers = 0,
 }: {
   milestoneId: string;
   resources: Person[];
@@ -32,9 +35,10 @@ export function EditMilestoneForm({
     description: string;
     ownerId: string;
     allocatedDays: string;
-    dueDate: string;
   };
   initialSubtasks: SubtaskDraft[];
+  poolTotal?: number;
+  poolUsedByOthers?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -43,13 +47,13 @@ export function EditMilestoneForm({
   const [description, setDescription] = useState(initial.description);
   const [ownerId, setOwnerId] = useState(initial.ownerId);
   const [days, setDays] = useState(initial.allocatedDays);
-  const [dueDate, setDueDate] = useState(initial.dueDate);
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>(initialSubtasks);
 
   const milestoneDays = Number(days) || 0;
   const subUsed = subtasks.reduce((s, t) => s + (Number(t.days) || 0), 0);
   const overMilestone = milestoneDays > 0 && subUsed > milestoneDays;
-  const valid = name.trim() && !overMilestone && subtasks.every((s) => s.title.trim());
+  const overPool = poolTotal > 0 && poolUsedByOthers + milestoneDays > poolTotal;
+  const valid = name.trim() && !overMilestone && !overPool && subtasks.every((s) => s.title.trim());
 
   function updateSub(i: number, patch: Partial<SubtaskDraft>) {
     setSubtasks((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -66,7 +70,6 @@ export function EditMilestoneForm({
           description,
           ownerId: ownerId || null,
           allocatedDays: days === "" ? null : Number(days),
-          dueDate: dueDate || null,
           subtasks: subtasks
             .filter((s) => s.title.trim())
             .map((s) => ({
@@ -112,13 +115,16 @@ export function EditMilestoneForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Allocated Days">
-                <Input type="number" min={0} value={days} onChange={(e) => setDays(e.target.value)} />
+              <Field label="Allocated Days" hint="Due date is derived from the days allocated">
+                <DayStepper
+                  value={days}
+                  onChange={setDays}
+                  poolTotal={poolTotal}
+                  poolUsedByOthers={poolUsedByOthers}
+                  over={overPool}
+                />
               </Field>
             </div>
-            <Field label="Due Date">
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </Field>
 
             {/* Subtasks */}
             <div className="rounded-lg border border-line bg-surface-2/40 p-3">

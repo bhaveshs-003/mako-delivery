@@ -22,12 +22,14 @@ export function ProjectActions({
   canManage,
   canArchive,
   isArchived,
+  scopeApproved,
 }: {
   projectId: string;
   status: string;
   canManage: boolean;
   canArchive: boolean;
   isArchived: boolean;
+  scopeApproved: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -55,7 +57,12 @@ export function ProjectActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {canManage && status === "not_started" && (
-        <Button size="sm" onClick={() => act({ action: "start" }, "Project started")} disabled={busy}>
+        <Button
+          size="sm"
+          onClick={() => act({ action: "start" }, "Project started")}
+          disabled={busy || !scopeApproved}
+          title={scopeApproved ? undefined : "Approve the scope understanding before starting"}
+        >
           <Play className="h-4 w-4" /> Start
         </Button>
       )}

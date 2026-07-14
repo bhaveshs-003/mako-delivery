@@ -90,6 +90,8 @@ export const createMilestoneSchema = z.object({
   name: z.string().min(1).max(500),
   description: z.string().max(2000).optional(),
   parentStage: z.string().max(255).optional(),
+  type: z.enum(["main_scope", "change_request", "delta_scope"]).default("main_scope"),
+  changeRequestId: uuid.optional().nullable(),
   ownerId: uuid.optional().nullable(),
   dueDate: z.coerce.date().optional().nullable(),
   allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
@@ -107,7 +109,9 @@ export const createMilestoneSchema = z.object({
 });
 
 export const patchMilestoneSchema = z.object({
-  action: z.enum(["edit", "status", "assign_owner"]),
+  action: z.enum(["edit", "status", "assign_owner", "reorder"]),
+  // reorder: move this milestone one slot up or down among its siblings.
+  direction: z.enum(["up", "down"]).optional(),
   name: z.string().min(1).max(500).optional(),
   description: z.string().max(2000).optional(),
   ownerId: uuid.optional().nullable(),
@@ -133,6 +137,12 @@ export const patchMilestoneSchema = z.object({
 // Whole-plan approval: submit (PM) / approve|reject (RL).
 export const milestonePlanSchema = z.object({
   action: z.enum(["submit", "approve", "reject"]),
+  decisionComment: z.string().max(2000).optional(),
+});
+
+// Scope-understanding decision (RL POC approve/reject the uploaded scope doc).
+export const decideScopeSchema = z.object({
+  action: z.enum(["approve", "reject"]),
   decisionComment: z.string().max(2000).optional(),
 });
 

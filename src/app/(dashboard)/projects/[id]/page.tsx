@@ -116,6 +116,7 @@ export default async function ProjectDetailPage({
                 canManage={canManage}
                 canArchive={canArchive}
                 isArchived={project.isArchived}
+                scopeApproved={project.scopeApproved}
               />
             </div>
           </div>
@@ -207,11 +208,20 @@ export default async function ProjectDetailPage({
       </div>
 
       {/* Tab content */}
-      {activeTab === "overview" && <OverviewTab projectId={project.id} description={project.description} />}
+      {activeTab === "overview" && (
+        <OverviewTab
+          projectId={project.id}
+          description={project.description}
+          canSubmitScope={canManage}
+          canDecideScope={can(user.role, "approval.decide") && canActOnProject(user, project)}
+          userId={user.id}
+        />
+      )}
       {activeTab === "lifecycle" && (
         <LifecycleTab
           projectId={project.id}
           canManage={canManage}
+          canDecidePlan={can(user.role, "approval.decide") && canActOnProject(user, project)}
           userId={user.id}
           userRole={user.role}
         />

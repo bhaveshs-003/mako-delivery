@@ -6,7 +6,7 @@
  * proposed days if Mako's aren't set). These are planning days — distinct from
  * the business-day BURN math used for SLA/attribution.
  */
-import { differenceInCalendarDays } from "date-fns";
+import { addDays, differenceInCalendarDays } from "date-fns";
 
 type ProjectDates = {
   rlStartDate: Date | null;
@@ -37,4 +37,28 @@ export function makoPromisedDays(p: ProjectDates): number | null {
  */
 export function allocationPoolDays(p: ProjectDates): number {
   return makoPromisedDays(p) ?? rlProposedDays(p) ?? 0;
+}
+
+/** The date milestone scheduling is anchored to (Mako start preferred). */
+export function scheduleAnchor(p: ProjectDates): Date | null {
+  return p.makoStartDate ?? p.rlStartDate ?? null;
+}
+
+/**
+ * Auto-derive each milestone's due date from its allocated days, chained: the
+ * first runs `days[0]` from the anchor; each subsequent one runs its days from
+ * the previous milestone's completion. Milestones without days yield a null due
+ * date but don't advance the cursor.
+ */
+export function chainDueDates(
+  anchor: Date,
+  ordered: { allocatedDays: number | null }[]
+): (Date | null)[] {
+  let cursor = anchor;
+  return ordered.map((m) => {
+    const d = m.allocatedDays ?? 0;
+    if (d <= 0) return null;
+    cursor = addDays(cursor, d);
+    return cursor;
+  });
 }

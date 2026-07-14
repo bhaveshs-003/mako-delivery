@@ -28,7 +28,9 @@ export async function ApprovalsTab({
       },
     }),
     prisma.milestone.findMany({
-      where: { projectId, isArchived: false },
+      // Only CR / delta milestones are individually approvable here; main-scope
+      // is approved via the whole milestone plan.
+      where: { projectId, isArchived: false, type: { not: "main_scope" } },
       select: { id: true, name: true },
       orderBy: { sortOrder: "asc" },
     }),

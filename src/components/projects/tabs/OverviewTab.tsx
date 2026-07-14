@@ -6,13 +6,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AttributionDatum } from "@/components/charts/DelayAttributionDonut";
 import { LazyDelayAttributionDonut } from "@/components/charts/lazy";
 import { PauseActiveTimeline, type PauseSegment } from "@/components/charts/PauseActiveTimeline";
+import { ScopeUnderstandingCard } from "@/components/projects/ScopeUnderstandingCard";
 
 export async function OverviewTab({
   projectId,
   description,
+  canSubmitScope,
+  canDecideScope,
+  userId,
 }: {
   projectId: string;
   description: string | null;
+  canSubmitScope: boolean;
+  canDecideScope: boolean;
+  userId: string;
 }) {
   const now = new Date();
   const [project, milestones, dependencies, pendingApprovals, openTickets, changeRequests, pauses] =
@@ -106,6 +113,13 @@ export async function OverviewTab({
 
   return (
     <div className="space-y-4">
+      <ScopeUnderstandingCard
+        projectId={projectId}
+        canSubmit={canSubmitScope}
+        canDecide={canDecideScope}
+        decerId={userId}
+      />
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {cards.map((c) => (
           <Card key={c.label} className="px-4 py-3.5">

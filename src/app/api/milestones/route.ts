@@ -5,6 +5,7 @@ import { createMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { allocationPoolDays } from "@/lib/allocation";
+import { recomputeDueDates } from "@/lib/milestone-scheduling";
 
 // POST /api/milestones — add a milestone (Sub-admin scoped / Admin+ full),
 // optionally with inline subtasks. Enforces the day-allocation hierarchy:
@@ -28,6 +29,30 @@ export async function POST(req: Request) {
   if (!project) return notFound("Project not found");
   if (!canActOnProject(user, project))
     return badRequest("You are not assigned to this project");
+
+  // ── Scope + plan gating ───────────────────────────────────────────────────
+  // Milestones can only be created once the scope understanding is approved.
+  if (!project.scopeApproved)
+    return badRequest("The scope understanding must be approved by RL before milestones can be created");
+
+  const planApproved = project.milestonePlanStatus === "approved";
+  if (project.milestonePlanStatus === "pending_approval")
+    return badRequest("The milestone plan is awaiting RL approval and is locked");
+
+  // Before plan approval only main-scope milestones may be added; after approval
+  // the plan is locked and further work comes only via Change Request / delta.
+  if (planApproved && input.type === "main_scope")
+    return badRequest("The plan is approved — add new milestones via a Change Request or delta scope");
+  if (!planApproved && input.type !== "main_scope")
+    return badRequest("Change Request / delta milestones can only be added after the plan is approved");
+
+  // A linked change request (for CR/delta milestones) must belong to this project.
+  if (input.changeRequestId) {
+    const cr = await prisma.changeRequest.count({
+      where: { id: input.changeRequestId, projectId: input.projectId },
+    });
+    if (cr === 0) return badRequest("The linked change request is not on this project");
+  }
 
   // Assigned resources must belong to the project.
   const projectResourceIds = new Set(project.resources.map((r) => r.userId));
@@ -70,11 +95,14 @@ export async function POST(req: Request) {
           name: input.name,
           description: input.description || null,
           parentStage: input.parentStage || null,
+          type: input.type,
+          changeRequestId: input.changeRequestId ?? null,
           ownerId: input.ownerId ?? null,
           dueDate: input.dueDate ?? null,
           allocatedDays: input.allocatedDays ?? null,
-          // The very first milestone starts In-Progress; the rest are Upcoming.
-          status: count === 0 ? "ongoing" : "yet_to_start",
+          // All milestones start Upcoming; execution begins after the plan (main
+          // scope) or the individual milestone (CR/delta) is approved.
+          status: "yet_to_start",
           sortOrder: count,
           createdBy: user.id,
         },
@@ -92,9 +120,11 @@ export async function POST(req: Request) {
         });
       }
       await writeAudit(
-        { actor: toAuditActor(user, req), action: "milestone.create", entityType: "milestone", entityId: m.id, after: { name: m.name, allocatedDays: m.allocatedDays, subtasks: input.subtasks.length }, metadata: { projectId: input.projectId } },
+        { actor: toAuditActor(user, req), action: "milestone.create", entityType: "milestone", entityId: m.id, after: { name: m.name, type: m.type, allocatedDays: m.allocatedDays, subtasks: input.subtasks.length }, metadata: { projectId: input.projectId } },
         tx
       );
+      // Auto-derive due dates now that a milestone was added.
+      await recomputeDueDates(tx, input.projectId);
       return m;
     });
     return ok(milestone, 201);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,17 +13,53 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Input, Field } from "@/components/ui/form-field";
+import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
+import { cn } from "@/lib/utils";
 
-export function AddMilestoneForm({ projectId }: { projectId: string }) {
+type Person = { id: string; name: string };
+type SubtaskDraft = { title: string; assignedToId: string; days: string };
+
+export function AddMilestoneForm({
+  projectId,
+  resources,
+  totalDays,
+  usedDays,
+}: {
+  projectId: string;
+  resources: Person[];
+  totalDays: number;
+  usedDays: number;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [stage, setStage] = useState("");
+  const [ownerId, setOwnerId] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [days, setDays] = useState("");
+  const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([]);
+
+  const remainingBefore = Math.max(0, totalDays - usedDays);
+  const milestoneDays = Number(days) || 0;
+  const subUsed = subtasks.reduce((s, t) => s + (Number(t.days) || 0), 0);
+
+  const overProject = milestoneDays > remainingBefore;
+  const overMilestone = subUsed > milestoneDays;
+  const valid = name.trim() && !overProject && !overMilestone && subtasks.every((s) => s.title.trim());
+
+  function reset() {
+    setName(""); setDescription(""); setStage(""); setOwnerId(""); setDueDate(""); setDays("");
+    setSubtasks([]);
+  }
+
+  function updateSub(i: number, patch: Partial<SubtaskDraft>) {
+    setSubtasks((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  }
 
   async function submit() {
     setBusy(true);
@@ -33,15 +69,23 @@ export function AddMilestoneForm({ projectId }: { projectId: string }) {
         body: JSON.stringify({
           projectId,
           name,
+          description: description || undefined,
           parentStage: stage || undefined,
+          ownerId: ownerId || null,
           dueDate: dueDate || null,
+          allocatedDays: days === "" ? null : Number(days),
+          subtasks: subtasks
+            .filter((s) => s.title.trim())
+            .map((s) => ({
+              title: s.title,
+              assignedToId: s.assignedToId || null,
+              allocatedDays: s.days === "" ? null : Number(s.days),
+            })),
         }),
       });
       toast.success("Milestone added");
       setOpen(false);
-      setName("");
-      setStage("");
-      setDueDate("");
+      reset();
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add milestone");
@@ -57,27 +101,128 @@ export function AddMilestoneForm({ projectId }: { projectId: string }) {
           <Plus className="h-4 w-4" /> Add Milestone
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent size="lg">
         <DialogHeader>
           <DialogTitle>Add Milestone</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+
+        <div className="max-h-[68vh] space-y-4 overflow-y-auto pr-1">
           <Field label="Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sample Migration" />
           </Field>
-          <Field label="Stage" hint="Groups the milestone under a lifecycle stage">
-            <Input value={stage} onChange={(e) => setStage(e.target.value)} placeholder="e.g. Sample Migration" />
+
+          <Field label="Description">
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="What does this milestone cover?" />
           </Field>
-          <Field label="Due Date">
-            <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </Field>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Assign to (resource)">
+              <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
+                <option value="">— Unassigned —</option>
+                {resources.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Stage" hint="Groups it under a lifecycle stage">
+              <Input value={stage} onChange={(e) => setStage(e.target.value)} placeholder="Optional" />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field
+              label="Allocated Days"
+              hint={`${remainingBefore} of ${totalDays} project days unallocated`}
+              error={overProject ? `Only ${remainingBefore} project day(s) remain` : undefined}
+            >
+              <Input
+                type="number"
+                min={0}
+                value={days}
+                onChange={(e) => setDays(e.target.value)}
+                className={overProject ? "border-danger" : ""}
+              />
+            </Field>
+            <Field label="Due Date">
+              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </Field>
+          </div>
+
+          {/* Subtasks */}
+          <div className="rounded-lg border border-line bg-surface-2/40 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Subtasks</p>
+              {milestoneDays > 0 && (
+                <span className={cn("text-2xs font-medium", overMilestone ? "text-danger" : "text-muted")}>
+                  {subUsed} / {milestoneDays} milestone days
+                </span>
+              )}
+            </div>
+
+            <div className="mt-2 space-y-2">
+              {subtasks.map((s, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input
+                    className="flex-1"
+                    placeholder="Subtask title"
+                    value={s.title}
+                    onChange={(e) => updateSub(i, { title: e.target.value })}
+                  />
+                  <Select
+                    className="w-36"
+                    value={s.assignedToId}
+                    onChange={(e) => updateSub(i, { assignedToId: e.target.value })}
+                  >
+                    <option value="">Unassigned</option>
+                    {resources.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </Select>
+                  <Input
+                    type="number"
+                    min={0}
+                    className="w-16"
+                    placeholder="days"
+                    value={s.days}
+                    onChange={(e) => updateSub(i, { days: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSubtasks((rows) => rows.filter((_, j) => j !== i))}
+                    className="text-muted hover:text-danger"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              {subtasks.length === 0 && (
+                <p className="text-2xs text-muted">No subtasks. Add tasks and split the milestone days across them.</p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSubtasks((rows) => [...rows, { title: "", assignedToId: "", days: "" }])}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add subtask
+            </button>
+
+            {overMilestone && (
+              <p className="mt-2 flex items-center gap-1 text-2xs text-danger">
+                <X className="h-3 w-3" /> Subtasks exceed the milestone allocation.
+              </p>
+            )}
+          </div>
         </div>
+
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">Cancel</Button>
           </DialogClose>
-          <Button onClick={submit} disabled={!name.trim() || busy}>
-            {busy ? "Adding…" : "Add"}
+          <Button onClick={submit} disabled={!valid || busy}>
+            {busy ? "Adding…" : "Add Milestone"}
           </Button>
         </DialogFooter>
       </DialogContent>

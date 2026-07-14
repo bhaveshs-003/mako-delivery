@@ -8,6 +8,7 @@ import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusCon
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
+import { projectTotalDays } from "@/lib/allocation";
 import { formatDate } from "@/lib/utils";
 import { ListChecks, AlertTriangle, Check } from "lucide-react";
 
@@ -45,7 +46,11 @@ export async function LifecycleTab({
     },
   });
 
-  const [commentRows, attachmentRows, projectResources] = await Promise.all([
+  const [project, commentRows, attachmentRows, projectResources] = await Promise.all([
+    prisma.project.findUnique({
+      where: { id: projectId },
+      select: { createdAt: true, rlCommittedDeadline: true },
+    }),
     prisma.comment.findMany({
       where: { milestoneId: { in: milestones.map((m) => m.id) } },
       orderBy: { createdAt: "asc" },
@@ -61,6 +66,12 @@ export async function LifecycleTab({
       include: { user: { select: { id: true, name: true } } },
     }),
   ]);
+
+  // Planning-day budget: total project days vs. what's allocated to milestones.
+  const totalDays = project
+    ? projectTotalDays(project.createdAt, project.rlCommittedDeadline)
+    : 0;
+  const usedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
 
   const resources = projectResources.map((r) => ({ id: r.user.id, name: r.user.name }));
   const commentsByMilestone = new Map<string, typeof commentRows>();
@@ -109,8 +120,24 @@ export async function LifecycleTab({
           <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
             <div className="h-full rounded-full bg-success transition-all" style={{ width: `${overallPct}%` }} />
           </div>
+          {totalDays > 0 && (
+            <p className="tabular mt-1.5 text-2xs text-muted">
+              {usedDays} of {totalDays} timeline days allocated
+              {usedDays < totalDays && ` · ${totalDays - usedDays} unallocated`}
+              {usedDays > totalDays && (
+                <span className="font-medium text-danger"> · over-allocated by {usedDays - totalDays}</span>
+              )}
+            </p>
+          )}
         </div>
-        {canManage && <AddMilestoneForm projectId={projectId} />}
+        {canManage && (
+          <AddMilestoneForm
+            projectId={projectId}
+            resources={resources}
+            totalDays={totalDays}
+            usedDays={usedDays}
+          />
+        )}
       </div>
 
       {milestones.length === 0 ? (
@@ -170,6 +197,11 @@ export async function LifecycleTab({
                               <div className="flex items-center gap-2">
                                 <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[m.status] ?? "bg-muted"}`} />
                                 <span className="truncate text-sm font-medium text-ink">{m.name}</span>
+                                {m.allocatedDays != null && (
+                                  <span className="tabular shrink-0 rounded-md bg-brand/10 px-1.5 py-0.5 text-2xs font-medium text-brand-ink">
+                                    {m.allocatedDays}d
+                                  </span>
+                                )}
                                 {m.approvalStatus !== "not_required" && (
                                   <StatusBadge status={m.approvalStatus} />
                                 )}
@@ -220,6 +252,9 @@ export async function LifecycleTab({
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2">
+                                      {s.allocatedDays != null && (
+                                        <span className="tabular shrink-0 text-2xs text-muted">{s.allocatedDays}d</span>
+                                      )}
                                       {s.status === "blocked" && s.blockedReason && (
                                         <span className="max-w-[220px] truncate text-2xs text-danger" title={s.blockedReason}>
                                           {s.blockedReason}

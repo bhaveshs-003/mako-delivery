@@ -319,6 +319,9 @@ model Milestone {
   dueDate DateTime?
   status  MilestoneStatus @default(yet_to_start)
 
+  // Planning days allocated to this milestone out of the project's total.
+  allocatedDays Int?
+
   // RL approval status (separate from milestone work status)
   approvalStatus       ApprovalStatus @default(not_required)
   approvedBy           String?
@@ -357,6 +360,8 @@ model Subtask {
   status        SubtaskStatus @default(not_started)
   blockedReason String? // mandatory when status = blocked (app-enforced)
   dueDate       DateTime?
+  // Planning days allocated to this subtask out of the milestone's days.
+  allocatedDays Int?
   sortOrder     Int           @default(0)
   createdBy     String
   createdAt     DateTime      @default(now())

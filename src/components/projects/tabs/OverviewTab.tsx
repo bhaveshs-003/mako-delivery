@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { deriveDependencyState } from "@/lib/sla";
 import { businessDaysBetween } from "@/lib/business-days";
+import { projectTotalDays } from "@/lib/allocation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AttributionDatum } from "@/components/charts/DelayAttributionDonut";
 import { LazyDelayAttributionDonut } from "@/components/charts/lazy";
@@ -18,9 +19,9 @@ export async function OverviewTab({
     await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
-        select: { createdAt: true, status: true, actualCompletionDate: true },
+        select: { createdAt: true, status: true, actualCompletionDate: true, rlCommittedDeadline: true },
       }),
-      prisma.milestone.findMany({ where: { projectId }, select: { status: true } }),
+      prisma.milestone.findMany({ where: { projectId }, select: { status: true, allocatedDays: true } }),
       prisma.dependency.findMany({ where: { projectId } }),
       prisma.approvalRequest.count({ where: { projectId, status: "pending" } }),
       prisma.ticketProject.count({ where: { projectId, ticket: { status: { notIn: ["closed", "resolved"] } } } }),
@@ -74,7 +75,12 @@ export async function OverviewTab({
   const elapsed = businessDaysBetween(start, end);
   const activeDays = Math.max(0, elapsed - pausedDays);
 
+  // Total timeline days + how many are allocated to milestones.
+  const totalDays = project ? projectTotalDays(project.createdAt, project.rlCommittedDeadline) : 0;
+  const allocatedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
+
   const cards = [
+    { label: "Timeline", value: `${totalDays}d`, sub: `${allocatedDays}d allocated`, danger: allocatedDays > totalDays },
     { label: "Milestones", value: `${doneMilestones}/${milestones.length}`, sub: "done" },
     { label: "Open Deps", value: openDeps, sub: `${breached} breached`, danger: breached > 0 },
     { label: "Pending Approvals", value: pendingApprovals },
@@ -84,7 +90,7 @@ export async function OverviewTab({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {cards.map((c) => (
           <Card key={c.label} className="px-4 py-3.5">
             <p className="text-xs font-medium text-muted">{c.label}</p>

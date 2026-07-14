@@ -88,6 +88,18 @@ export const createMilestoneSchema = z.object({
   parentStage: z.string().max(255).optional(),
   ownerId: uuid.optional().nullable(),
   dueDate: z.coerce.date().optional().nullable(),
+  allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
+  // Optionally create subtasks inline (each drawing days from the milestone).
+  subtasks: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(500),
+        assignedToId: uuid.optional().nullable(),
+        allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
+      })
+    )
+    .max(50)
+    .default([]),
 });
 
 export const patchMilestoneSchema = z.object({

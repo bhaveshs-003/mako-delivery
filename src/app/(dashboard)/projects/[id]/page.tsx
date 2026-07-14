@@ -19,6 +19,7 @@ import { MomsTab } from "@/components/projects/tabs/MomsTab";
 import { CommentsTab } from "@/components/projects/tabs/CommentsTab";
 import { DocumentsTab } from "@/components/projects/tabs/DocumentsTab";
 import { cn, formatDate } from "@/lib/utils";
+import { rlProposedDays, makoPromisedDays } from "@/lib/allocation";
 
 const TABS: { key: string; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -70,6 +71,8 @@ export default async function ProjectDetailPage({
     !!project.rlCommittedDeadline &&
     !project.actualCompletionDate &&
     now > project.rlCommittedDeadline;
+  const rlDays = rlProposedDays(project);
+  const makoDays = makoPromisedDays(project);
 
   return (
     <div className="space-y-4">
@@ -116,10 +119,12 @@ export default async function ProjectDetailPage({
               )}
               <span className="hidden text-line-strong sm:inline">•</span>
               <span className={pastDeadline ? "text-danger" : "text-ink-2"}>
-                <span className="text-muted">RL</span> {formatDate(project.rlCommittedDeadline)}
+                <span className="text-muted">RL</span> {formatDate(project.rlStartDate)} → {formatDate(project.rlCommittedDeadline)}
+                {rlDays != null && <span className="tabular text-muted"> · {rlDays}d</span>}
               </span>
               <span className="text-ink-2">
-                <span className="text-muted">Mako</span> {formatDate(project.makoInternalDeadline)}
+                <span className="text-muted">Mako</span> {formatDate(project.makoStartDate)} → {formatDate(project.makoInternalDeadline)}
+                {makoDays != null && <span className="tabular text-muted"> · {makoDays}d</span>}
               </span>
               <span className="text-ink-2">
                 <span className="text-muted">Actual</span> {formatDate(project.actualCompletionDate)}

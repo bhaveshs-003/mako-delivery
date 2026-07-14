@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { deriveDependencyState } from "@/lib/sla";
 import { businessDaysBetween } from "@/lib/business-days";
-import { projectTotalDays } from "@/lib/allocation";
+import { allocationPoolDays, rlProposedDays, makoPromisedDays } from "@/lib/allocation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AttributionDatum } from "@/components/charts/DelayAttributionDonut";
 import { LazyDelayAttributionDonut } from "@/components/charts/lazy";
@@ -19,7 +19,15 @@ export async function OverviewTab({
     await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
-        select: { createdAt: true, status: true, actualCompletionDate: true, rlCommittedDeadline: true },
+        select: {
+          createdAt: true,
+          status: true,
+          actualCompletionDate: true,
+          rlStartDate: true,
+          rlCommittedDeadline: true,
+          makoStartDate: true,
+          makoInternalDeadline: true,
+        },
       }),
       prisma.milestone.findMany({ where: { projectId }, select: { status: true, allocatedDays: true } }),
       prisma.dependency.findMany({ where: { projectId } }),
@@ -75,14 +83,20 @@ export async function OverviewTab({
   const elapsed = businessDaysBetween(start, end);
   const activeDays = Math.max(0, elapsed - pausedDays);
 
-  // Total timeline days + how many are allocated to milestones.
-  const totalDays = project?.rlCommittedDeadline
-    ? projectTotalDays(project.createdAt, project.rlCommittedDeadline)
-    : 0;
+  // Derived RL / Mako day counts + allocation pool.
+  const rlDays = project ? rlProposedDays(project) : null;
+  const makoDays = project ? makoPromisedDays(project) : null;
+  const poolDays = project ? allocationPoolDays(project) : 0;
   const allocatedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
 
   const cards = [
-    { label: "Timeline", value: `${totalDays}d`, sub: `${allocatedDays}d allocated`, danger: allocatedDays > totalDays },
+    { label: "RL Proposed", value: rlDays != null ? `${rlDays}d` : "—", sub: "RL start → end" },
+    {
+      label: "Mako Promised",
+      value: makoDays != null ? `${makoDays}d` : "—",
+      sub: poolDays > 0 ? `${allocatedDays}d allocated` : "Mako start → end",
+      danger: allocatedDays > poolDays && poolDays > 0,
+    },
     { label: "Milestones", value: `${doneMilestones}/${milestones.length}`, sub: "done" },
     { label: "Open Deps", value: openDeps, sub: `${breached} breached`, danger: breached > 0 },
     { label: "Pending Approvals", value: pendingApprovals },
@@ -92,7 +106,7 @@ export async function OverviewTab({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {cards.map((c) => (
           <Card key={c.label} className="px-4 py-3.5">
             <p className="text-xs font-medium text-muted">{c.label}</p>

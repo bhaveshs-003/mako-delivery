@@ -173,6 +173,9 @@ export async function PATCH(
             data: {
               title: body.title ?? undefined,
               description: body.description ?? undefined,
+              rlStartDate: body.rlStartDate ?? undefined,
+              rlCommittedDeadline: body.rlCommittedDeadline ?? undefined,
+              makoStartDate: body.makoStartDate ?? undefined,
               makoInternalDeadline: body.makoInternalDeadline ?? undefined,
               projectLeadId: body.projectLeadId ?? undefined,
             },

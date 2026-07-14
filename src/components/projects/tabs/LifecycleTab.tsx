@@ -9,7 +9,7 @@ import { SubmitMilestoneApproval } from "@/components/projects/SubmitMilestoneAp
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
-import { projectTotalDays } from "@/lib/allocation";
+import { allocationPoolDays } from "@/lib/allocation";
 import { formatDate } from "@/lib/utils";
 import { ListChecks, AlertTriangle, Check } from "lucide-react";
 
@@ -50,7 +50,12 @@ export async function LifecycleTab({
   const [project, commentRows, attachmentRows, projectResources] = await Promise.all([
     prisma.project.findUnique({
       where: { id: projectId },
-      select: { createdAt: true, rlCommittedDeadline: true },
+      select: {
+        rlStartDate: true,
+        rlCommittedDeadline: true,
+        makoStartDate: true,
+        makoInternalDeadline: true,
+      },
     }),
     prisma.comment.findMany({
       where: { milestoneId: { in: milestones.map((m) => m.id) } },
@@ -68,10 +73,8 @@ export async function LifecycleTab({
     }),
   ]);
 
-  // Planning-day budget: total project days vs. what's allocated to milestones.
-  const totalDays = project?.rlCommittedDeadline
-    ? projectTotalDays(project.createdAt, project.rlCommittedDeadline)
-    : 0;
+  // Planning-day budget: the allocation pool vs. what's allocated to milestones.
+  const totalDays = project ? allocationPoolDays(project) : 0;
   const usedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
 
   const resources = projectResources.map((r) => ({ id: r.user.id, name: r.user.name }));

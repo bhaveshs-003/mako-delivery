@@ -4,7 +4,7 @@ import { readJson, ok, badRequest, notFound, serverError } from "@/lib/api";
 import { createMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
-import { projectTotalDays } from "@/lib/allocation";
+import { allocationPoolDays } from "@/lib/allocation";
 
 // POST /api/milestones — add a milestone (Sub-admin scoped / Admin+ full),
 // optionally with inline subtasks. Enforces the day-allocation hierarchy:
@@ -40,9 +40,9 @@ export async function POST(req: Request) {
 
   // ── Time-allocation hierarchy ─────────────────────────────────────────────
   if (input.allocatedDays != null) {
-    // Only enforce the project cap when a timeline deadline is set.
-    if (project.rlCommittedDeadline) {
-      const total = projectTotalDays(project.createdAt, project.rlCommittedDeadline);
+    // Enforce the project cap only when a timeline (Mako or RL) defines a pool.
+    const total = allocationPoolDays(project);
+    if (total > 0) {
       const existing = await prisma.milestone.aggregate({
         where: { projectId: input.projectId, isArchived: false },
         _sum: { allocatedDays: true },
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       const used = existing._sum.allocatedDays ?? 0;
       if (used + input.allocatedDays > total)
         return badRequest(
-          `Over-allocates the project timeline: ${used} of ${total} day(s) already allocated, ${total - used} remaining.`
+          `Over-allocates the timeline: ${used} of ${total} day(s) already allocated, ${total - used} remaining.`
         );
     }
 

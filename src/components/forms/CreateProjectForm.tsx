@@ -30,8 +30,10 @@ export function CreateProjectForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("migration");
-  const [rlDeadline, setRlDeadline] = useState("");
-  const [makoDeadline, setMakoDeadline] = useState("");
+  const [rlStart, setRlStart] = useState("");
+  const [rlEnd, setRlEnd] = useState("");
+  const [makoStart, setMakoStart] = useState("");
+  const [makoEnd, setMakoEnd] = useState("");
   const [leadId, setLeadId] = useState("");
   const [rlIds, setRlIds] = useState<string[]>([]);
   const [resIds, setResIds] = useState<string[]>([]);
@@ -51,6 +53,10 @@ export function CreateProjectForm() {
   }, [open]);
 
   const valid = title.trim();
+  const dayCount = (a: string, b: string) =>
+    a && b ? Math.max(0, Math.round((+new Date(b) - +new Date(a)) / 86400000)) : null;
+  const rlDays = dayCount(rlStart, rlEnd);
+  const makoDays = dayCount(makoStart, makoEnd);
 
   async function submit() {
     setLoading(true);
@@ -61,8 +67,10 @@ export function CreateProjectForm() {
           title,
           description,
           type,
-          rlCommittedDeadline: rlDeadline || null,
-          makoInternalDeadline: makoDeadline || null,
+          rlStartDate: rlStart || null,
+          rlCommittedDeadline: rlEnd || null,
+          makoStartDate: makoStart || null,
+          makoInternalDeadline: makoEnd || null,
           projectLeadId: leadId || null,
           rlConsultantIds: rlIds,
           resourceIds: resIds,
@@ -83,8 +91,10 @@ export function CreateProjectForm() {
     setTitle("");
     setDescription("");
     setType("migration");
-    setRlDeadline("");
-    setMakoDeadline("");
+    setRlStart("");
+    setRlEnd("");
+    setMakoStart("");
+    setMakoEnd("");
     setLeadId("");
     setRlIds([]);
     setResIds([]);
@@ -129,13 +139,44 @@ export function CreateProjectForm() {
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="RL Committed Deadline" hint="Optional — can be set later">
-              <Input type="date" value={rlDeadline} onChange={(e) => setRlDeadline(e.target.value)} />
-            </Field>
-            <Field label="Mako Internal Deadline" hint="Mako's working target (adjustable)">
-              <Input type="date" value={makoDeadline} onChange={(e) => setMakoDeadline(e.target.value)} />
-            </Field>
+          {/* RL timeline */}
+          <div className="rounded-lg border border-line bg-surface-2/40 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">RL Timeline</p>
+              {rlDays !== null && (
+                <span className="tabular text-2xs font-medium text-brand-ink">
+                  {rlDays} day{rlDays === 1 ? "" : "s"} proposed
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Start date" hint="Optional">
+                <Input type="date" value={rlStart} max={rlEnd || undefined} onChange={(e) => setRlStart(e.target.value)} />
+              </Field>
+              <Field label="End date (committed)">
+                <Input type="date" value={rlEnd} min={rlStart || undefined} onChange={(e) => setRlEnd(e.target.value)} />
+              </Field>
+            </div>
+          </div>
+
+          {/* Mako timeline */}
+          <div className="rounded-lg border border-line bg-surface-2/40 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Mako Timeline</p>
+              {makoDays !== null && (
+                <span className="tabular text-2xs font-medium text-brand-ink">
+                  {makoDays} day{makoDays === 1 ? "" : "s"} promised
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Start date" hint="Optional">
+                <Input type="date" value={makoStart} max={makoEnd || undefined} onChange={(e) => setMakoStart(e.target.value)} />
+              </Field>
+              <Field label="End date (promised)">
+                <Input type="date" value={makoEnd} min={makoStart || undefined} onChange={(e) => setMakoEnd(e.target.value)} />
+              </Field>
+            </div>
           </div>
 
           <Field label="Description">

@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { projectScopeWhere, can, canActOnProject } from "@/lib/permissions";
-import { PROJECT_TYPE_LABELS } from "@/lib/constants";
+import { PROJECT_TYPE_LABELS, ATTRIBUTION_COLORS } from "@/lib/constants";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { ProjectActions } from "@/components/projects/ProjectActions";
@@ -76,7 +76,7 @@ export default async function ProjectDetailPage({
 
   return (
     <div className="space-y-4">
-      {/* Compact header */}
+      {/* Project header */}
       <div>
         <Link
           href="/projects"
@@ -85,83 +85,110 @@ export default async function ProjectDetailPage({
           <ArrowLeft className="h-3.5 w-3.5" /> Projects
         </Link>
 
-        <div className="mt-1.5 flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-ink">
+        <div className="mt-1.5 rounded-xl bg-surface p-4 shadow-card sm:p-5">
+          {/* Title + actions */}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-ink-2">
+                  {PROJECT_TYPE_LABELS[project.type]}
+                </span>
+                <StatusBadge status={project.status} />
+                {project.isArchived && (
+                  <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-muted">
+                    Archived
+                  </span>
+                )}
+              </div>
+              <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">
                 {project.title}
               </h1>
-              <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-ink-2">
-                {PROJECT_TYPE_LABELS[project.type]}
-              </span>
-              <StatusBadge status={project.status} />
-              {project.isArchived && (
-                <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-muted">
-                  Archived
-                </span>
-              )}
             </div>
 
-            {/* Meta: people + the three timelines, inline & compact */}
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
-              {project.projectLead && (
-                <span className="inline-flex items-center gap-1.5 text-ink-2">
-                  <UserAvatar
-                    name={project.projectLead.name}
-                    deactivated={!project.projectLead.isActive}
-                    size="sm"
-                  />
-                  {project.projectLead.name}
-                </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {canAssign && (
+                <AssignResourcesDialog
+                  projectId={project.id}
+                  currentResourceIds={project.resources.map((r) => r.userId)}
+                  currentConsultantIds={project.rlConsultants.map((c) => c.userId)}
+                />
               )}
-              {project.rlConsultants.length > 0 && (
-                <span>RL: {project.rlConsultants.map((c) => c.user.name).join(", ")}</span>
-              )}
-              <span className="hidden text-line-strong sm:inline">•</span>
-              <span className={pastDeadline ? "text-danger" : "text-ink-2"}>
-                <span className="text-muted">RL</span> {formatDate(project.rlStartDate)} → {formatDate(project.rlCommittedDeadline)}
-                {rlDays != null && <span className="tabular text-muted"> · {rlDays}d</span>}
-              </span>
-              <span className="text-ink-2">
-                <span className="text-muted">Mako</span> {formatDate(project.makoStartDate)} → {formatDate(project.makoInternalDeadline)}
-                {makoDays != null && <span className="tabular text-muted"> · {makoDays}d</span>}
-              </span>
-              <span className="text-ink-2">
-                <span className="text-muted">Actual</span> {formatDate(project.actualCompletionDate)}
-              </span>
-              {project.rlProjectId && (
-                <span className="text-ink-2">
-                  <span className="text-muted">ID</span> {project.rlProjectId}
-                </span>
-              )}
+              <ProjectActions
+                projectId={project.id}
+                status={project.status}
+                canManage={canManage}
+                canArchive={canArchive}
+                isArchived={project.isArchived}
+              />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {canAssign && (
-              <AssignResourcesDialog
-                projectId={project.id}
-                currentResourceIds={project.resources.map((r) => r.userId)}
-                currentConsultantIds={project.rlConsultants.map((c) => c.userId)}
-              />
+          {project.status === "paused" && project.currentPauseReasonComment && (
+            <div className="mt-3 rounded-md border-l-2 border-warning bg-warning/5 px-3 py-1.5 text-xs text-warning">
+              <span className="font-medium">Paused</span> ·{" "}
+              {project.currentPauseReasonCategory?.replace(/_/g, " ")} —{" "}
+              {project.currentPauseReasonComment}
+            </div>
+          )}
+
+          {/* People */}
+          <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-line pt-4">
+            <MetaField label="Project Lead">
+              {project.projectLead ? (
+                <span className="inline-flex items-center gap-1.5 text-sm text-ink">
+                  <UserAvatar name={project.projectLead.name} deactivated={!project.projectLead.isActive} size="sm" />
+                  {project.projectLead.name}
+                </span>
+              ) : (
+                <span className="text-sm text-muted">Unassigned</span>
+              )}
+            </MetaField>
+
+            <MetaField label="RL POC">
+              {project.rlConsultants.length > 0 ? (
+                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {project.rlConsultants.map((c) => (
+                    <span key={c.userId} className="inline-flex items-center gap-1.5 text-sm text-ink">
+                      <UserAvatar name={c.user.name} deactivated={!c.user.isActive} size="sm" />
+                      {c.user.name}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-sm text-muted">—</span>
+              )}
+            </MetaField>
+
+            {project.rlProjectId && (
+              <MetaField label="RL Project ID">
+                <span className="tabular text-sm text-ink">{project.rlProjectId}</span>
+              </MetaField>
             )}
-            <ProjectActions
-              projectId={project.id}
-              status={project.status}
-              canManage={canManage}
-              canArchive={canArchive}
-              isArchived={project.isArchived}
+          </div>
+
+          {/* Timelines */}
+          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <TimelineTile
+              label="RL Timeline"
+              accent={ATTRIBUTION_COLORS.rl}
+              range={rangeText(project.rlStartDate, project.rlCommittedDeadline)}
+              note={rlDays != null ? `${rlDays} Days proposed` : "Not set"}
+              danger={pastDeadline}
+            />
+            <TimelineTile
+              label="Mako Timeline"
+              accent={ATTRIBUTION_COLORS.mako}
+              range={rangeText(project.makoStartDate, project.makoInternalDeadline)}
+              note={makoDays != null ? `${makoDays} Days promised` : "Not set"}
+            />
+            <TimelineTile
+              label="Actual"
+              accent="#8a93a2"
+              range={project.actualCompletionDate ? formatDate(project.actualCompletionDate) : "In progress"}
+              note={project.actualCompletionDate ? "Completed" : "Not completed"}
             />
           </div>
         </div>
-
-        {project.status === "paused" && project.currentPauseReasonComment && (
-          <div className="mt-3 rounded-md border-l-2 border-warning bg-warning/5 px-3 py-1.5 text-xs text-warning">
-            <span className="font-medium">Paused</span> ·{" "}
-            {project.currentPauseReasonCategory?.replace(/_/g, " ")} —{" "}
-            {project.currentPauseReasonComment}
-          </div>
-        )}
       </div>
 
       {/* Sticky tab bar pinned to the top of the scroll area */}
@@ -222,6 +249,46 @@ export default async function ProjectDetailPage({
       {activeTab === "documents" && (
         <DocumentsTab projectId={project.id} canUpload={canActOnProject(user, project)} />
       )}
+    </div>
+  );
+}
+
+// ── Header helpers ──────────────────────────────────────────────────────────
+function rangeText(start: Date | null, end: Date | null): string {
+  if (!start && !end) return "Not set";
+  return `${formatDate(start)} → ${formatDate(end)}`;
+}
+
+function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-2xs font-medium uppercase tracking-wide text-muted">{label}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function TimelineTile({
+  label,
+  accent,
+  range,
+  note,
+  danger = false,
+}: {
+  label: string;
+  accent: string;
+  range: string;
+  note: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-line bg-surface-2/40 px-3 py-2.5">
+      <p className="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wide text-muted">
+        <span className="h-2 w-2 rounded-[3px]" style={{ backgroundColor: accent }} />
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-medium ${danger ? "text-danger" : "text-ink"}`}>{range}</p>
+      <p className="tabular text-2xs text-muted">{note}</p>
     </div>
   );
 }

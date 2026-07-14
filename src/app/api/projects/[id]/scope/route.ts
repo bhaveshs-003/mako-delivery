@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { buildFileKey, putObject } from "@/lib/storage";
 import { daysBetween } from "@/lib/allocation";
+import { addBusinessDaysTo } from "@/lib/business-days";
 import { notify, notifyMany } from "@/lib/notifications";
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -38,6 +39,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const note = (form.get("note") as string) || null;
   const title = (form.get("title") as string) || null;
   const kind = form.get("kind") === "change_request" ? "change_request" : "scope";
+  const impactRaw = Number(form.get("timelineImpactDays"));
+  const timelineImpactDays =
+    kind === "change_request" && Number.isFinite(impactRaw) && impactRaw > 0
+      ? Math.min(365, Math.round(impactRaw))
+      : null;
 
   // Gating differs by kind:
   //  - scope: only while scope is NOT yet approved; one pending at a time.
@@ -65,6 +71,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           projectId: project.id,
           kind,
           title,
+          timelineImpactDays,
           filename: file.name,
           fileKey: key,
           fileSize: BigInt(file.size),
@@ -133,9 +140,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const isScope = doc.kind === "scope";
 
+  // A change request with a timeline impact extends the Mako deadline on approval.
+  const willAdjust = !isScope && approved && !!doc.timelineImpactDays && doc.timelineImpactDays > 0;
+
   try {
     const now = new Date();
-    const updated = await prisma.$transaction(async (tx) => {
+    const { updated, newDeadline } = await prisma.$transaction(async (tx) => {
       const d = await tx.scopeDocument.update({
         where: { id: doc.id },
         data: {
@@ -144,17 +154,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           decidedAt: now,
           decisionComment: body.decisionComment ?? null,
           approvalDurationDays: daysBetween(doc.submittedAt, now),
+          timelineAdjusted: willAdjust,
         },
       });
       // Only a scope decision flips the gate; a change-request decision doesn't.
       if (isScope) {
         await tx.project.update({ where: { id: project.id }, data: { scopeApproved: approved } });
       }
+      // Retain the CR timeline adjustment: extend the Mako internal deadline.
+      let deadline: Date | null = null;
+      const base = project.makoInternalDeadline ?? project.rlCommittedDeadline;
+      if (willAdjust && base) {
+        deadline = addBusinessDaysTo(base, doc.timelineImpactDays!);
+        await tx.project.update({ where: { id: project.id }, data: { makoInternalDeadline: deadline } });
+      }
       await writeAudit(
-        { actor: toAuditActor(user, req), action: `${isScope ? "scope" : "change_request"}.${approved ? "approve" : "reject"}`, entityType: "project", entityId: project.id, after: { status: d.status } },
+        { actor: toAuditActor(user, req), action: `${isScope ? "scope" : "change_request"}.${approved ? "approve" : "reject"}`, entityType: "project", entityId: project.id, after: { status: d.status, newDeadline: deadline } },
         tx
       );
-      return d;
+      return { updated: d, newDeadline: deadline };
     });
 
     const label = isScope ? "Scope" : "Change request";
@@ -165,7 +183,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       body: approved
         ? isScope
           ? `${user.name} approved the scope understanding. You can now build the milestone plan.`
-          : `${user.name} approved the change request.`
+          : `${user.name} approved the change request.${newDeadline ? ` Timeline extended to ${newDeadline.toDateString()}.` : ""}`
         : `${user.name} rejected: "${body.decisionComment}". You can submit a revised document.`,
       entityType: "project",
       entityId: project.id,

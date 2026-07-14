@@ -15,7 +15,6 @@ import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
 import { ApprovalsTab } from "@/components/projects/tabs/ApprovalsTab";
 import { TicketsTab } from "@/components/projects/tabs/TicketsTab";
-import { ChangeRequestsTab } from "@/components/projects/tabs/ChangeRequestsTab";
 import { MomsTab } from "@/components/projects/tabs/MomsTab";
 import { CommentsTab } from "@/components/projects/tabs/CommentsTab";
 import { DocumentsTab } from "@/components/projects/tabs/DocumentsTab";
@@ -29,7 +28,6 @@ const TABS: { key: string; label: string }[] = [
   { key: "dependencies", label: "Dependencies" },
   { key: "approvals", label: "Approvals" },
   { key: "tickets", label: "Tickets" },
-  { key: "change-requests", label: "Change Requests" },
   { key: "moms", label: "MoMs" },
   { key: "comments", label: "Comments" },
   { key: "documents", label: "Documents" },
@@ -225,13 +223,6 @@ export default async function ProjectDetailPage({
         />
       )}
       {activeTab === "tickets" && <TicketsTab projectId={project.id} user={user} />}
-      {activeTab === "change-requests" && (
-        <ChangeRequestsTab
-          projectId={project.id}
-          canRaise={can(user.role, "cr.raise") && canManage}
-          canDecide={can(user.role, "cr.decide") && canActOnProject(user, project)}
-        />
-      )}
       {activeTab === "moms" && (
         <MomsTab projectId={project.id} userId={user.id} canLog={can(user.role, "meeting.log") && canActOnProject(user, project)} />
       )}

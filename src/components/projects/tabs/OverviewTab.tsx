@@ -33,7 +33,7 @@ export async function OverviewTab({
       prisma.dependency.findMany({ where: { projectId } }),
       prisma.approvalRequest.count({ where: { projectId, status: "pending" } }),
       prisma.ticketProject.count({ where: { projectId, ticket: { status: { notIn: ["closed", "resolved"] } } } }),
-      prisma.changeRequest.count({ where: { projectId, status: { notIn: ["approved", "rejected"] } } }),
+      prisma.scopeDocument.count({ where: { projectId, kind: "change_request" } }),
       prisma.pauseHistory.findMany({
         where: { projectId },
         orderBy: { pausedAt: "asc" },

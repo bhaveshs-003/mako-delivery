@@ -320,6 +320,8 @@ model ScopeDocument {
 
   kind     ScopeDocumentKind @default(scope)
   title    String? // short label (used for change requests)
+  timelineImpactDays Int? // change requests: business days added to the deadline on approval
+  timelineAdjusted   Boolean @default(false)
   filename String
   fileKey  String // storage key
   fileSize BigInt

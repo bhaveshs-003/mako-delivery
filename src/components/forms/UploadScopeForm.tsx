@@ -35,6 +35,7 @@ export function UploadScopeForm({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
+  const [impact, setImpact] = useState("");
 
   const isCR = kind === "change_request";
 
@@ -46,6 +47,7 @@ export function UploadScopeForm({
       form.append("file", file);
       form.append("kind", kind);
       if (isCR && title.trim()) form.append("title", title.trim());
+      if (isCR && impact.trim()) form.append("timelineImpactDays", impact.trim());
       if (note.trim()) form.append("note", note.trim());
       const res = await fetch(`/api/projects/${projectId}/scope`, { method: "POST", body: form });
       if (!res.ok) {
@@ -57,6 +59,7 @@ export function UploadScopeForm({
       setFile(null);
       setTitle("");
       setNote("");
+      setImpact("");
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Upload failed");
@@ -78,9 +81,21 @@ export function UploadScopeForm({
           </DialogHeader>
           <div className="space-y-4">
             {isCR && (
-              <Field label="Title" hint="Short label for this change request">
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Added reporting module" />
-              </Field>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <Field label="Title" hint="Short label for this change request">
+                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Added reporting module" />
+                </Field>
+                <Field label="Timeline impact" hint="Business days added on approval">
+                  <Input
+                    type="number"
+                    min={0}
+                    className="w-28"
+                    value={impact}
+                    onChange={(e) => setImpact(e.target.value)}
+                    placeholder="0"
+                  />
+                </Field>
+              </div>
             )}
             <Field label="Document" required hint="PDF / DOCX / XLSX · max 25MB">
               <input

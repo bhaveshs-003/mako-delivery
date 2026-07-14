@@ -63,6 +63,11 @@ export async function ScopeUnderstandingCard({
           </a>
         </div>
         <div className="flex items-center gap-2">
+          {doc.timelineImpactDays != null && doc.timelineImpactDays > 0 && (
+            <span className="tabular rounded-md bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning">
+              {doc.timelineAdjusted ? "+" : "±"}{doc.timelineImpactDays}d timeline
+            </span>
+          )}
           <StatusBadge status={doc.status} />
           <span className="text-2xs text-muted">
             {formatDate(doc.submittedAt)}

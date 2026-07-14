@@ -68,6 +68,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           // NOTE: slaDeadline intentionally NOT modified on reject.
         },
       });
+      const current = await tx.milestone.findUnique({
+        where: { id: approval.milestoneId },
+        select: { sortOrder: true },
+      });
       await tx.milestone.update({
         where: { id: approval.milestoneId },
         data: {
@@ -75,10 +79,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           approvedBy: approved ? user.id : null,
           approvedAt: approved ? new Date() : null,
           approvalComment: body.decisionComment,
-          // Rejected milestone flips to revision_requested so the PM reworks it.
-          status: approved ? "completed" : "revision_requested",
+          // Approved → Completed; rejected → back to In Progress for rework.
+          status: approved ? "completed" : "ongoing",
         },
       });
+
+      // Sequential progression: approving a milestone moves the next one to
+      // In-Progress (the previous approval gates the next milestone).
+      if (approved && current) {
+        const next = await tx.milestone.findFirst({
+          where: {
+            projectId: approval.projectId,
+            isArchived: false,
+            sortOrder: { gt: current.sortOrder },
+            approvalStatus: { not: "approved" },
+          },
+          orderBy: { sortOrder: "asc" },
+        });
+        if (next) await tx.milestone.update({ where: { id: next.id }, data: { status: "ongoing" } });
+      }
+
       await writeAudit(
         { actor, action: approved ? "approval.approve" : "approval.reject", entityType: "approval_request", entityId: a.id, before: { status: "pending" }, after: { status: a.status }, metadata: { projectId: approval.projectId } },
         tx

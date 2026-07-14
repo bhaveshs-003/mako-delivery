@@ -29,13 +29,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!canActOnProject(user, milestone.project))
     return badRequest("You are not assigned to this project");
 
-  // Structural edits (name/description/owner/days) are locked once the plan is
-  // submitted or approved. Work-status changes remain allowed (execution).
-  const planLocked =
-    milestone.project.milestonePlanStatus === "approved" ||
-    milestone.project.milestonePlanStatus === "pending_approval";
-  if (planLocked && (body.action === "edit" || body.action === "assign_owner"))
-    return badRequest("The milestone plan is locked; milestones can't be edited");
+  // A milestone is locked from structural edits once it is submitted (pending)
+  // or approved. Work-status changes remain allowed (execution).
+  const mLocked =
+    milestone.approvalStatus === "approved" || milestone.approvalStatus === "pending";
+  if (mLocked && (body.action === "edit" || body.action === "assign_owner"))
+    return badRequest("This milestone is locked (submitted or approved) and can't be edited");
 
   // Spec §7.2: a milestone cannot be 'submitted' while it has blocked subtasks.
   if (body.action === "status" && body.status === "submitted") {
@@ -94,6 +93,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
                 allocatedDays: body.allocatedDays ?? undefined,
               },
       });
+
+      // Replace subtasks when an explicit set is supplied on an edit.
+      if (body.action === "edit" && body.subtasks) {
+        await tx.subtask.deleteMany({ where: { milestoneId: milestone.id } });
+        if (body.subtasks.length) {
+          await tx.subtask.createMany({
+            data: body.subtasks.map((s, i) => ({
+              milestoneId: milestone.id,
+              title: s.title,
+              assignedToId: s.assignedToId ?? null,
+              allocatedDays: s.allocatedDays ?? null,
+              sortOrder: i,
+              createdBy: user.id,
+            })),
+          });
+        }
+      }
+
       await writeAudit(
         {
           actor: toAuditActor(user, req),

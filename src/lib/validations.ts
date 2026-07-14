@@ -116,6 +116,18 @@ export const patchMilestoneSchema = z.object({
   status: z
     .enum(["yet_to_start", "ongoing", "submitted", "revision_requested", "completed"])
     .optional(),
+  // When present on an edit, the milestone's subtasks are replaced with this set
+  // (edit is only allowed pre-approval, so no execution state is lost).
+  subtasks: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(500),
+        assignedToId: uuid.optional().nullable(),
+        allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
+      })
+    )
+    .max(50)
+    .optional(),
 });
 
 // Whole-plan approval: submit (PM) / approve|reject (RL).

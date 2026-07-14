@@ -29,10 +29,6 @@ export async function POST(req: Request) {
   if (!canActOnProject(user, project))
     return badRequest("You are not assigned to this project");
 
-  // Locked while the plan is under review or approved.
-  if (project.milestonePlanStatus === "approved" || project.milestonePlanStatus === "pending_approval")
-    return badRequest("The milestone plan is locked and cannot be changed");
-
   // Assigned resources must belong to the project.
   const projectResourceIds = new Set(project.resources.map((r) => r.userId));
   if (input.ownerId && !projectResourceIds.has(input.ownerId))
@@ -77,6 +73,8 @@ export async function POST(req: Request) {
           ownerId: input.ownerId ?? null,
           dueDate: input.dueDate ?? null,
           allocatedDays: input.allocatedDays ?? null,
+          // The very first milestone starts In-Progress; the rest are Upcoming.
+          status: count === 0 ? "ongoing" : "yet_to_start",
           sortOrder: count,
           createdBy: user.id,
         },

@@ -212,7 +212,6 @@ export default async function ProjectDetailPage({
         <LifecycleTab
           projectId={project.id}
           canManage={canManage}
-          canApprovePlan={can(user.role, "approval.decide") && canActOnProject(user, project)}
           userId={user.id}
           userRole={user.role}
         />

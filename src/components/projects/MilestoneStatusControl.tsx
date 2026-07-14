@@ -7,10 +7,8 @@ import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 
 const OPTIONS = [
-  { value: "yet_to_start", label: "Yet to Start" },
-  { value: "ongoing", label: "Ongoing" },
-  { value: "submitted", label: "Submitted" },
-  { value: "revision_requested", label: "Revision Requested" },
+  { value: "yet_to_start", label: "Upcoming" },
+  { value: "ongoing", label: "In Progress" },
   { value: "completed", label: "Completed" },
 ];
 

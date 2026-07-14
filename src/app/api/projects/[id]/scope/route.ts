@@ -10,8 +10,9 @@ import { notify, notifyMany } from "@/lib/notifications";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
-// POST /api/projects/[id]/scope — PM uploads a Scope Understanding document.
-// Supersedes any prior doc and (re)opens the approval gate as pending.
+// POST /api/projects/[id]/scope — PM uploads a document for RL approval. Two
+// kinds: the initial `scope` understanding (which gates the project), or a
+// `change_request` raised AFTER scope is approved. Both follow the same flow.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const guard = await requireUser();
   if ("response" in guard) return guard.response;
@@ -23,14 +24,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   });
   if (!project) return notFound("Project not found");
   if (!can(user.role, "milestone.crud") || !canActOnProject(user, project))
-    return badRequest("You do not have permission to submit a scope document");
-
-  // Block a new submission while one is already awaiting a decision.
-  const pending = await prisma.scopeDocument.count({
-    where: { projectId: project.id, status: "pending" },
-  });
-  if (pending > 0)
-    return badRequest("A scope document is already awaiting RL approval");
+    return badRequest("You do not have permission to submit a document");
 
   let form: FormData;
   try {
@@ -42,6 +36,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!(file instanceof File)) return badRequest("No file provided");
   if (file.size > MAX_BYTES) return badRequest("File exceeds 25MB limit");
   const note = (form.get("note") as string) || null;
+  const title = (form.get("title") as string) || null;
+  const kind = form.get("kind") === "change_request" ? "change_request" : "scope";
+
+  // Gating differs by kind:
+  //  - scope: only while scope is NOT yet approved; one pending at a time.
+  //  - change_request: only AFTER scope is approved; each is independent.
+  if (kind === "scope") {
+    if (project.scopeApproved)
+      return badRequest("Scope is already approved — raise a change request to change scope");
+    const pending = await prisma.scopeDocument.count({
+      where: { projectId: project.id, kind: "scope", status: "pending" },
+    });
+    if (pending > 0) return badRequest("A scope document is already awaiting RL approval");
+  } else {
+    if (!project.scopeApproved)
+      return badRequest("Approve the scope understanding before raising a change request");
+  }
 
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -49,15 +60,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await putObject(key, bytes, file.type || "application/octet-stream");
 
     const doc = await prisma.$transaction(async (tx) => {
-      // A previously APPROVED scope is superseded by this new submission; earlier
-      // rejected docs are kept as-is so the full history stays visible as cards.
-      await tx.scopeDocument.updateMany({
-        where: { projectId: project.id, status: "approved" },
-        data: { status: "superseded" },
-      });
       const d = await tx.scopeDocument.create({
         data: {
           projectId: project.id,
+          kind,
+          title,
           filename: file.name,
           fileKey: key,
           fileSize: BigInt(file.size),
@@ -67,23 +74,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           submittedById: user.id,
         },
       });
-      // A fresh pending doc means scope is no longer approved.
-      await tx.project.update({ where: { id: project.id }, data: { scopeApproved: false } });
+      // Only a scope submission (re)opens the gate; change requests never do.
+      if (kind === "scope") {
+        await tx.project.update({ where: { id: project.id }, data: { scopeApproved: false } });
+      }
       await writeAudit(
-        { actor: toAuditActor(user, req), action: "scope.submit", entityType: "project", entityId: project.id, after: { scopeDocId: d.id } },
+        { actor: toAuditActor(user, req), action: kind === "scope" ? "scope.submit" : "change_request.submit", entityType: "project", entityId: project.id, after: { scopeDocId: d.id, kind } },
         tx
       );
       return d;
     });
 
+    const label = kind === "scope" ? "scope understanding" : "change request";
     await notifyMany(project.rlConsultants.map((c) => c.userId), {
       type: "approval_requested",
-      title: `Scope understanding submitted: ${project.title}`,
-      body: `${user.name} uploaded a scope understanding document for your approval.`,
+      title: `${kind === "scope" ? "Scope understanding" : "Change request"} submitted: ${project.title}`,
+      body: `${user.name} uploaded a ${label} document for your approval.`,
       entityType: "project",
       entityId: project.id,
       projectId: project.id,
-      deepLinkPath: `/projects/${project.id}?tab=overview`,
+      deepLinkPath: `/projects/${project.id}?tab=scope`,
     });
     return ok({ id: doc.id });
   } catch (e) {
@@ -91,7 +101,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 }
 
-// PATCH /api/projects/[id]/scope — RL POC approves/rejects the pending scope doc.
+// PATCH /api/projects/[id]/scope — RL POC approves/rejects a specific document.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const guard = await requireUser();
   if ("response" in guard) return guard.response;
@@ -107,19 +117,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
   if (!project) return notFound("Project not found");
   if (!can(user.role, "approval.decide") || !canActOnProject(user, project))
-    return badRequest("Only the assigned RL POC can decide the scope");
+    return badRequest("Only the assigned RL POC can decide this");
 
   const doc = await prisma.scopeDocument.findFirst({
-    where: { projectId: project.id, status: "pending" },
-    orderBy: { submittedAt: "desc" },
+    where: { id: body.scopeDocumentId, projectId: project.id },
   });
-  if (!doc) return badRequest("There is no scope document awaiting a decision");
+  if (!doc) return notFound("Document not found");
+  if (doc.status !== "pending") return badRequest("This document has already been decided");
   if (doc.submittedById === user.id)
     return badRequest("You cannot decide your own submission");
 
   const approved = body.action === "approve";
   if (!approved && !body.decisionComment?.trim())
-    return badRequest("A reason is required to reject the scope");
+    return badRequest("A reason is required to reject");
+
+  const isScope = doc.kind === "scope";
 
   try {
     const now = new Date();
@@ -134,28 +146,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           approvalDurationDays: daysBetween(doc.submittedAt, now),
         },
       });
-      await tx.project.update({
-        where: { id: project.id },
-        data: { scopeApproved: approved },
-      });
+      // Only a scope decision flips the gate; a change-request decision doesn't.
+      if (isScope) {
+        await tx.project.update({ where: { id: project.id }, data: { scopeApproved: approved } });
+      }
       await writeAudit(
-        { actor: toAuditActor(user, req), action: approved ? "scope.approve" : "scope.reject", entityType: "project", entityId: project.id, after: { status: d.status } },
+        { actor: toAuditActor(user, req), action: `${isScope ? "scope" : "change_request"}.${approved ? "approve" : "reject"}`, entityType: "project", entityId: project.id, after: { status: d.status } },
         tx
       );
       return d;
     });
 
+    const label = isScope ? "Scope" : "Change request";
     await notify({
       recipientId: doc.submittedById,
       type: "approval_decided",
-      title: `Scope ${approved ? "approved" : "rejected"}: ${project.title}`,
+      title: `${label} ${approved ? "approved" : "rejected"}: ${project.title}`,
       body: approved
-        ? `${user.name} approved the scope understanding. You can now build the milestone plan.`
-        : `${user.name} rejected the scope: "${body.decisionComment}". Upload a revised document.`,
+        ? isScope
+          ? `${user.name} approved the scope understanding. You can now build the milestone plan.`
+          : `${user.name} approved the change request.`
+        : `${user.name} rejected: "${body.decisionComment}". You can submit a revised document.`,
       entityType: "project",
       entityId: project.id,
       projectId: project.id,
-      deepLinkPath: `/projects/${project.id}?tab=overview`,
+      deepLinkPath: `/projects/${project.id}?tab=scope`,
     });
     return ok(updated);
   } catch (e) {

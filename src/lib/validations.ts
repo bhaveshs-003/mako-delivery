@@ -140,8 +140,9 @@ export const milestonePlanSchema = z.object({
   decisionComment: z.string().max(2000).optional(),
 });
 
-// Scope-understanding decision (RL POC approve/reject the uploaded scope doc).
+// Scope decision (RL POC approve/reject a specific scope / change-request doc).
 export const decideScopeSchema = z.object({
+  scopeDocumentId: uuid,
   action: z.enum(["approve", "reject"]),
   decisionComment: z.string().max(2000).optional(),
 });

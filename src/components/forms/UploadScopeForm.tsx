@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload } from "lucide-react";
+import { Upload, GitPullRequestArrow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,18 +11,21 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Textarea, Field } from "@/components/ui/form-field";
+import { Input, Textarea, Field } from "@/components/ui/form-field";
 import { toast } from "@/components/ui/toast";
 
 /**
- * Upload (or re-upload) the project's Scope Understanding document. Submitting
- * sends it to the RL POC for approval and re-opens the scope gate as pending.
+ * Upload a document for RL approval — either the initial scope understanding or
+ * a change request (raised after scope approval). Both hit the same endpoint and
+ * follow the same approve/reject flow.
  */
 export function UploadScopeForm({
   projectId,
+  kind = "scope",
   resubmit = false,
 }: {
   projectId: string;
+  kind?: "scope" | "change_request";
   resubmit?: boolean;
 }) {
   const router = useRouter();
@@ -30,7 +33,10 @@ export function UploadScopeForm({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
+
+  const isCR = kind === "change_request";
 
   async function submit() {
     if (!file) return;
@@ -38,15 +44,18 @@ export function UploadScopeForm({
     try {
       const form = new FormData();
       form.append("file", file);
+      form.append("kind", kind);
+      if (isCR && title.trim()) form.append("title", title.trim());
       if (note.trim()) form.append("note", note.trim());
       const res = await fetch(`/api/projects/${projectId}/scope`, { method: "POST", body: form });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? "Upload failed");
       }
-      toast.success("Scope submitted to RL for approval");
+      toast.success(isCR ? "Change request submitted to RL" : "Scope submitted to RL for approval");
       setOpen(false);
       setFile(null);
+      setTitle("");
       setNote("");
       router.refresh();
     } catch (e) {
@@ -58,15 +67,21 @@ export function UploadScopeForm({
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        <Upload className="h-4 w-4" /> {resubmit ? "Re-upload scope" : "Upload scope"}
+      <Button size="sm" variant={isCR ? "outline" : undefined} onClick={() => setOpen(true)}>
+        {isCR ? <GitPullRequestArrow className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
+        {isCR ? "Raise change request" : resubmit ? "Re-upload scope" : "Upload scope"}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Scope Understanding</DialogTitle>
+            <DialogTitle>{isCR ? "Raise a Change Request" : "Scope Understanding"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {isCR && (
+              <Field label="Title" hint="Short label for this change request">
+                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Added reporting module" />
+              </Field>
+            )}
             <Field label="Document" required hint="PDF / DOCX / XLSX · max 25MB">
               <input
                 ref={inputRef}

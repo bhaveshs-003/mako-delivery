@@ -15,8 +15,14 @@ import { Textarea, Field } from "@/components/ui/form-field";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 
-/** RL POC approve/reject the pending scope-understanding document. */
-export function ScopeDecision({ projectId }: { projectId: string }) {
+/** RL POC approve/reject a specific pending scope / change-request document. */
+export function ScopeDecision({
+  projectId,
+  scopeDocumentId,
+}: {
+  projectId: string;
+  scopeDocumentId: string;
+}) {
   const router = useRouter();
   const [action, setAction] = useState<"approve" | "reject" | null>(null);
   const [comment, setComment] = useState("");
@@ -28,7 +34,7 @@ export function ScopeDecision({ projectId }: { projectId: string }) {
     try {
       await apiFetch(`/api/projects/${projectId}/scope`, {
         method: "PATCH",
-        body: JSON.stringify({ action, decisionComment: comment || undefined }),
+        body: JSON.stringify({ scopeDocumentId, action, decisionComment: comment || undefined }),
       });
       toast.success(action === "approve" ? "Scope approved" : "Scope rejected");
       setAction(null);

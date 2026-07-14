@@ -190,6 +190,14 @@ enum ScopeStatus {
   superseded
 }
 
+// A scope document is either the initial scope understanding (which gates the
+// project) or a change request raised after scope approval. Both follow the
+// same upload → RL approve/reject flow.
+enum ScopeDocumentKind {
+  scope
+  change_request
+}
+
 // ---------------------------------------------------------------------------
 // USERS & AUTH  (§2.1)
 // ---------------------------------------------------------------------------
@@ -310,6 +318,8 @@ model ScopeDocument {
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  kind     ScopeDocumentKind @default(scope)
+  title    String? // short label (used for change requests)
   filename String
   fileKey  String // storage key
   fileSize BigInt

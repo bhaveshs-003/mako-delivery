@@ -49,9 +49,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     await putObject(key, bytes, file.type || "application/octet-stream");
 
     const doc = await prisma.$transaction(async (tx) => {
-      // Any earlier non-superseded docs become superseded by this new one.
+      // A previously APPROVED scope is superseded by this new submission; earlier
+      // rejected docs are kept as-is so the full history stays visible as cards.
       await tx.scopeDocument.updateMany({
-        where: { projectId: project.id, status: { not: "superseded" } },
+        where: { projectId: project.id, status: "approved" },
         data: { status: "superseded" },
       });
       const d = await tx.scopeDocument.create({

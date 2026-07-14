@@ -10,6 +10,7 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { ProjectActions } from "@/components/projects/ProjectActions";
 import { AssignResourcesDialog } from "@/components/projects/AssignResourcesDialog";
 import { ProjectTimelineBar } from "@/components/projects/ProjectTimelineBar";
+import { ScopeUnderstandingCard } from "@/components/projects/ScopeUnderstandingCard";
 import { DependenciesTab } from "@/components/projects/tabs/DependenciesTab";
 import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
@@ -24,6 +25,7 @@ import { rlProposedDays, makoPromisedDays } from "@/lib/allocation";
 
 const TABS: { key: string; label: string }[] = [
   { key: "overview", label: "Overview" },
+  { key: "scope", label: "Scope Understanding" },
   { key: "lifecycle", label: "Lifecycle & Milestones" },
   { key: "dependencies", label: "Dependencies" },
   { key: "approvals", label: "Approvals" },
@@ -207,12 +209,14 @@ export default async function ProjectDetailPage({
 
       {/* Tab content */}
       {activeTab === "overview" && (
-        <OverviewTab
+        <OverviewTab projectId={project.id} description={project.description} />
+      )}
+      {activeTab === "scope" && (
+        <ScopeUnderstandingCard
           projectId={project.id}
-          description={project.description}
-          canSubmitScope={canManage}
-          canDecideScope={can(user.role, "approval.decide") && canActOnProject(user, project)}
-          userId={user.id}
+          canSubmit={canManage}
+          canDecide={can(user.role, "approval.decide") && canActOnProject(user, project)}
+          decerId={user.id}
         />
       )}
       {activeTab === "lifecycle" && (

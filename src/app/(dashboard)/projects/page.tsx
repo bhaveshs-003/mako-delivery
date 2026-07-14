@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ClickableRow } from "@/components/shared/ClickableRow";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -161,17 +161,17 @@ export default async function ProjectsPage({
                     now > p.rlCommittedDeadline;
 
                   return (
-                    <tr
+                    <ClickableRow
                       key={p.id}
+                      href={`/projects/${p.id}`}
                       className={`border-b border-border last:border-0 hover:bg-bg ${p.isArchived ? "opacity-50" : ""}`}
                     >
                       <td className="px-4 py-3">
-                        <Link
-                          href={`/projects/${p.id}`}
-                          className={`font-medium text-navy hover:underline ${p.isArchived ? "line-through" : ""}`}
+                        <span
+                          className={`font-medium text-navy ${p.isArchived ? "line-through" : ""}`}
                         >
                           {p.title}
-                        </Link>
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-slate">
                         {PROJECT_TYPE_LABELS[p.type]}
@@ -228,7 +228,7 @@ export default async function ProjectsPage({
                       >
                         {formatDate(p.rlCommittedDeadline)}
                       </td>
-                    </tr>
+                    </ClickableRow>
                   );
                 })}
               </tbody>

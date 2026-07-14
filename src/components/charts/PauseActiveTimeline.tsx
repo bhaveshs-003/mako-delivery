@@ -65,12 +65,12 @@ export function PauseActiveTimeline({
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: ACTIVE }} />
           <span className="text-ink-2">Active</span>
-          <span className="tabular font-semibold text-ink">{activeDays}d</span>
+          <span className="tabular font-semibold text-ink">{activeDays} Days</span>
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-[3px] bg-warning" />
           <span className="text-ink-2">Paused</span>
-          <span className="tabular font-semibold text-ink">{pausedDays}d</span>
+          <span className="tabular font-semibold text-ink">{pausedDays} Days</span>
           {pausedDays > 0 && <span className="text-2xs text-muted">({pausedShare}% of elapsed)</span>}
         </span>
       </div>

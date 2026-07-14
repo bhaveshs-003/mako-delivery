@@ -29,6 +29,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!canActOnProject(user, milestone.project))
     return badRequest("You are not assigned to this project");
 
+  // Structural edits (name/description/owner/days) are locked once the plan is
+  // submitted or approved. Work-status changes remain allowed (execution).
+  const planLocked =
+    milestone.project.milestonePlanStatus === "approved" ||
+    milestone.project.milestonePlanStatus === "pending_approval";
+  if (planLocked && (body.action === "edit" || body.action === "assign_owner"))
+    return badRequest("The milestone plan is locked; milestones can't be edited");
+
   // Spec §7.2: a milestone cannot be 'submitted' while it has blocked subtasks.
   if (body.action === "status" && body.status === "submitted") {
     const blocked = await prisma.subtask.count({
@@ -83,6 +91,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
                 description: body.description ?? undefined,
                 ownerId: body.ownerId ?? undefined,
                 dueDate: body.dueDate ?? undefined,
+                allocatedDays: body.allocatedDays ?? undefined,
               },
       });
       await writeAudit(

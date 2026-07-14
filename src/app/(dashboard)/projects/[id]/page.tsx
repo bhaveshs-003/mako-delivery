@@ -189,7 +189,15 @@ export default async function ProjectDetailPage({
 
       {/* Tab content */}
       {activeTab === "overview" && <OverviewTab projectId={project.id} description={project.description} />}
-      {activeTab === "lifecycle" && <LifecycleTab projectId={project.id} canManage={canManage} userId={user.id} userRole={user.role} />}
+      {activeTab === "lifecycle" && (
+        <LifecycleTab
+          projectId={project.id}
+          canManage={canManage}
+          canApprovePlan={can(user.role, "approval.decide") && canActOnProject(user, project)}
+          userId={user.id}
+          userRole={user.role}
+        />
+      )}
       {activeTab === "dependencies" && <DependenciesTab projectId={project.id} role={user.role} canManage={canManage} />}
       {activeTab === "approvals" && (
         <ApprovalsTab

@@ -112,9 +112,16 @@ export const patchMilestoneSchema = z.object({
   description: z.string().max(2000).optional(),
   ownerId: uuid.optional().nullable(),
   dueDate: z.coerce.date().optional().nullable(),
+  allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
   status: z
     .enum(["yet_to_start", "ongoing", "submitted", "revision_requested", "completed"])
     .optional(),
+});
+
+// Whole-plan approval: submit (PM) / approve|reject (RL).
+export const milestonePlanSchema = z.object({
+  action: z.enum(["submit", "approve", "reject"]),
+  decisionComment: z.string().max(2000).optional(),
 });
 
 export const createSubtaskSchema = z.object({

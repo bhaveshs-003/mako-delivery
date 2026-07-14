@@ -90,11 +90,11 @@ export async function OverviewTab({
   const allocatedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
 
   const cards = [
-    { label: "RL Proposed", value: rlDays != null ? `${rlDays}d` : "—", sub: "RL start → end" },
+    { label: "RL Proposed", value: rlDays != null ? `${rlDays} Days` : "—", sub: "RL start → end" },
     {
       label: "Mako Promised",
-      value: makoDays != null ? `${makoDays}d` : "—",
-      sub: poolDays > 0 ? `${allocatedDays}d allocated` : "Mako start → end",
+      value: makoDays != null ? `${makoDays} Days` : "—",
+      sub: poolDays > 0 ? `${allocatedDays} Days allocated` : "Mako start → end",
       danger: allocatedDays > poolDays && poolDays > 0,
     },
     { label: "Milestones", value: `${doneMilestones}/${milestones.length}`, sub: "done" },

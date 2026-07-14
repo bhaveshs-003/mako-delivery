@@ -164,6 +164,14 @@ enum MomLateReason {
   other
 }
 
+// Approval state for the whole milestone plan of a project.
+enum MilestonePlanStatus {
+  draft
+  pending_approval
+  approved
+  rejected
+}
+
 // ---------------------------------------------------------------------------
 // USERS & AUTH  (§2.1)
 // ---------------------------------------------------------------------------
@@ -227,6 +235,14 @@ model Project {
   projectLeadId String? // Sub-admin (PM)
   projectLead   User?   @relation("ProjectLead", fields: [projectLeadId], references: [id])
   createdBy     String // scalar actor stamp (immutable)
+
+  // Milestone-plan approval (the whole plan is submitted to RL, not per-milestone)
+  milestonePlanStatus          MilestonePlanStatus @default(draft)
+  milestonePlanSubmittedAt     DateTime?
+  milestonePlanSubmittedBy     String?
+  milestonePlanDecidedAt       DateTime?
+  milestonePlanDecidedBy       String?
+  milestonePlanDecisionComment String?
 
   // Pause tracking (current state; full history in PauseHistory)
   currentPauseReasonCategory AttributionParty?

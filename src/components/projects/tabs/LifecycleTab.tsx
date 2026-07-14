@@ -5,8 +5,9 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { SubtaskStatusControl } from "@/components/projects/SubtaskStatusControl";
 import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusControl";
-import { SubmitMilestoneApproval } from "@/components/projects/SubmitMilestoneApproval";
+import { MilestonePlanBar } from "@/components/projects/MilestonePlanBar";
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
+import { EditMilestoneForm } from "@/components/forms/EditMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
 import { allocationPoolDays } from "@/lib/allocation";
@@ -29,11 +30,13 @@ const DOT: Record<string, string> = {
 export async function LifecycleTab({
   projectId,
   canManage,
+  canApprovePlan,
   userId,
   userRole,
 }: {
   projectId: string;
   canManage: boolean;
+  canApprovePlan: boolean;
   userId: string;
   userRole: UserRole;
 }) {
@@ -51,6 +54,8 @@ export async function LifecycleTab({
     prisma.project.findUnique({
       where: { id: projectId },
       select: {
+        milestonePlanStatus: true,
+        milestonePlanDecisionComment: true,
         rlStartDate: true,
         rlCommittedDeadline: true,
         makoStartDate: true,
@@ -76,6 +81,15 @@ export async function LifecycleTab({
   // Planning-day budget: the allocation pool vs. what's allocated to milestones.
   const totalDays = project ? allocationPoolDays(project) : 0;
   const usedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
+
+  // Plan approval state — structural edits only while draft or rejected.
+  const planStatus = project?.milestonePlanStatus ?? "draft";
+  const editable = canManage && (planStatus === "draft" || planStatus === "rejected");
+  const planMilestones = milestones.map((m) => ({
+    name: m.name,
+    allocatedDays: m.allocatedDays ?? null,
+    subtasks: m.subtasks.length,
+  }));
 
   const resources = projectResources.map((r) => ({ id: r.user.id, name: r.user.name }));
   const commentsByMilestone = new Map<string, typeof commentRows>();
@@ -134,7 +148,7 @@ export async function LifecycleTab({
             </p>
           )}
         </div>
-        {canManage && (
+        {editable && (
           <AddMilestoneForm
             projectId={projectId}
             resources={resources}
@@ -144,8 +158,20 @@ export async function LifecycleTab({
         )}
       </div>
 
+      {/* Whole-plan approval bar */}
+      <MilestonePlanBar
+        projectId={projectId}
+        status={planStatus}
+        canManage={canManage}
+        canDecide={canApprovePlan}
+        decisionComment={project?.milestonePlanDecisionComment ?? null}
+        milestones={planMilestones}
+        totalDays={totalDays}
+        usedDays={usedDays}
+      />
+
       {milestones.length === 0 ? (
-        <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones or load them from the project's lifecycle template." />
+        <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones, then submit the plan to RL for approval." />
       ) : (
         <ol className="mt-1">
           {stages.map(([stage, list], si) => {
@@ -227,16 +253,20 @@ export async function LifecycleTab({
                                 )}
                               </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-2">
-                              {canManage &&
-                                (m.approvalStatus === "not_required" ||
-                                  m.approvalStatus === "rejected") && (
-                                  <SubmitMilestoneApproval
-                                    projectId={projectId}
-                                    milestoneId={m.id}
-                                    resubmit={m.approvalStatus === "rejected"}
-                                  />
-                                )}
+                            <div className="flex shrink-0 items-center gap-1">
+                              {editable && (
+                                <EditMilestoneForm
+                                  milestoneId={m.id}
+                                  resources={resources}
+                                  initial={{
+                                    name: m.name,
+                                    description: m.description ?? "",
+                                    ownerId: m.ownerId ?? "",
+                                    allocatedDays: m.allocatedDays != null ? String(m.allocatedDays) : "",
+                                    dueDate: m.dueDate ? m.dueDate.toISOString().slice(0, 10) : "",
+                                  }}
+                                />
+                              )}
                               {canManage ? (
                                 <MilestoneStatusControl milestoneId={m.id} status={m.status} />
                               ) : (

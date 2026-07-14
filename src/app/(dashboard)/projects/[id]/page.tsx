@@ -67,7 +67,6 @@ export default async function ProjectDetailPage({
     ? searchParams.tab!
     : "overview";
 
-  const now = new Date();
   const rlDays = rlProposedDays(project);
   const makoDays = makoPromisedDays(project);
 
@@ -82,11 +81,11 @@ export default async function ProjectDetailPage({
           <ArrowLeft className="h-3.5 w-3.5" /> Projects
         </Link>
 
-        <div className="mt-1.5 rounded-xl bg-surface p-4 shadow-card sm:p-5">
+        <div className="mt-1.5 rounded-xl bg-surface p-3.5 shadow-card">
           {/* Title + actions */}
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="mb-1.5 flex items-center gap-2">
+              <div className="mb-1 flex items-center gap-2">
                 <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-ink-2">
                   {PROJECT_TYPE_LABELS[project.type]}
                 </span>
@@ -97,7 +96,7 @@ export default async function ProjectDetailPage({
                   </span>
                 )}
               </div>
-              <h1 className="truncate text-2xl font-semibold tracking-tight text-ink">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-ink">
                 {project.title}
               </h1>
             </div>
@@ -122,15 +121,15 @@ export default async function ProjectDetailPage({
           </div>
 
           {project.status === "paused" && project.currentPauseReasonComment && (
-            <div className="mt-3 rounded-md border-l-2 border-warning bg-warning/5 px-3 py-1.5 text-xs text-warning">
+            <div className="mt-2.5 rounded-md border-l-2 border-warning bg-warning/5 px-3 py-1.5 text-xs text-warning">
               <span className="font-medium">Paused</span> ·{" "}
               {project.currentPauseReasonCategory?.replace(/_/g, " ")} —{" "}
               {project.currentPauseReasonComment}
             </div>
           )}
 
-          {/* Compact meta + visual timeline */}
-          <div className="mt-3 grid gap-x-6 gap-y-3 border-t border-line pt-3 lg:grid-cols-[minmax(0,auto)_minmax(320px,1fr)]">
+          {/* Compact meta + timeline summary */}
+          <div className="mt-2.5 grid gap-x-6 gap-y-2 border-t border-line pt-2.5 lg:grid-cols-[minmax(0,auto)_minmax(300px,1fr)]">
             {/* People — compact, inline */}
             <div className="flex flex-col gap-1.5 text-xs">
               <span className="inline-flex items-center gap-1.5">
@@ -177,7 +176,6 @@ export default async function ProjectDetailPage({
                 actual={project.actualCompletionDate}
                 rlDays={rlDays}
                 makoDays={makoDays}
-                now={now}
               />
             </div>
           </div>

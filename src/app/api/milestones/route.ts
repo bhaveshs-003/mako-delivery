@@ -30,11 +30,9 @@ export async function POST(req: Request) {
   if (!canActOnProject(user, project))
     return badRequest("You are not assigned to this project");
 
-  // ── Scope + plan gating ───────────────────────────────────────────────────
-  // Milestones can only be created once the scope understanding is approved.
-  if (!project.scopeApproved)
-    return badRequest("The scope understanding must be approved by RL before milestones can be created");
-
+  // ── Plan gating ───────────────────────────────────────────────────────────
+  // Milestones can be drafted before scope approval (only project START is
+  // gated on scope). Plan state still governs what kind can be added.
   const planApproved = project.milestonePlanStatus === "approved";
   if (project.milestonePlanStatus === "pending_approval")
     return badRequest("The milestone plan is awaiting RL approval and is locked");

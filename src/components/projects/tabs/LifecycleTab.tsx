@@ -146,7 +146,7 @@ export async function LifecycleTab({
             </p>
           )}
         </div>
-        {canManage && scopeApproved && (
+        {canManage && (
           <AddMilestoneForm
             projectId={projectId}
             resources={resources}
@@ -158,21 +158,20 @@ export async function LifecycleTab({
         )}
       </div>
 
-      {/* Scope gate notice */}
+      {/* Scope reminder — informational; the project can't START until scope is approved. */}
       {!scopeApproved && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            The <span className="font-medium">scope understanding</span> must be approved by the RL POC before
-            milestones can be created. Upload it in the <span className="font-medium">Overview</span> tab.
+            You can build the milestone plan now, but the project can’t be started until the RL POC
+            approves the <span className="font-medium">scope understanding</span> in the{" "}
+            <span className="font-medium">Scope Understanding</span> tab.
           </p>
         </div>
       )}
 
       {milestones.length === 0 ? (
-        scopeApproved && (
-          <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones, then submit the whole plan to RL for approval." />
-        )
+        <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones, then submit the whole plan to RL for approval." />
       ) : (
         <ol className="space-y-2">
           {milestones.map((m, idx) => {

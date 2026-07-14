@@ -4,11 +4,12 @@ import { ArrowLeft } from "lucide-react";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { projectScopeWhere, can, canActOnProject } from "@/lib/permissions";
-import { PROJECT_TYPE_LABELS, ATTRIBUTION_COLORS } from "@/lib/constants";
+import { PROJECT_TYPE_LABELS } from "@/lib/constants";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { ProjectActions } from "@/components/projects/ProjectActions";
 import { AssignResourcesDialog } from "@/components/projects/AssignResourcesDialog";
+import { ProjectTimelineBar } from "@/components/projects/ProjectTimelineBar";
 import { DependenciesTab } from "@/components/projects/tabs/DependenciesTab";
 import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
@@ -18,7 +19,7 @@ import { ChangeRequestsTab } from "@/components/projects/tabs/ChangeRequestsTab"
 import { MomsTab } from "@/components/projects/tabs/MomsTab";
 import { CommentsTab } from "@/components/projects/tabs/CommentsTab";
 import { DocumentsTab } from "@/components/projects/tabs/DocumentsTab";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { rlProposedDays, makoPromisedDays } from "@/lib/allocation";
 
 const TABS: { key: string; label: string }[] = [
@@ -67,10 +68,6 @@ export default async function ProjectDetailPage({
     : "overview";
 
   const now = new Date();
-  const pastDeadline =
-    !!project.rlCommittedDeadline &&
-    !project.actualCompletionDate &&
-    now > project.rlCommittedDeadline;
   const rlDays = rlProposedDays(project);
   const makoDays = makoPromisedDays(project);
 
@@ -131,62 +128,57 @@ export default async function ProjectDetailPage({
             </div>
           )}
 
-          {/* People */}
-          <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3 border-t border-line pt-4">
-            <MetaField label="Project Lead">
-              {project.projectLead ? (
-                <span className="inline-flex items-center gap-1.5 text-sm text-ink">
-                  <UserAvatar name={project.projectLead.name} deactivated={!project.projectLead.isActive} size="sm" />
-                  {project.projectLead.name}
+          {/* Compact meta + visual timeline */}
+          <div className="mt-3 grid gap-x-6 gap-y-3 border-t border-line pt-3 lg:grid-cols-[minmax(0,auto)_minmax(320px,1fr)]">
+            {/* People — compact, inline */}
+            <div className="flex flex-col gap-1.5 text-xs">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-12 shrink-0 text-muted">Lead</span>
+                {project.projectLead ? (
+                  <span className="inline-flex items-center gap-1.5 text-ink">
+                    <UserAvatar name={project.projectLead.name} deactivated={!project.projectLead.isActive} size="sm" />
+                    {project.projectLead.name}
+                  </span>
+                ) : (
+                  <span className="text-muted">Unassigned</span>
+                )}
+              </span>
+              <span className="inline-flex items-start gap-1.5">
+                <span className="w-12 shrink-0 pt-1 text-muted">RL POC</span>
+                {project.rlConsultants.length > 0 ? (
+                  <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    {project.rlConsultants.map((c) => (
+                      <span key={c.userId} className="inline-flex items-center gap-1.5 text-ink">
+                        <UserAvatar name={c.user.name} deactivated={!c.user.isActive} size="sm" />
+                        {c.user.name}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  <span className="pt-1 text-muted">—</span>
+                )}
+              </span>
+              {project.rlProjectId && (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-12 shrink-0 text-muted">RL ID</span>
+                  <span className="tabular text-ink">{project.rlProjectId}</span>
                 </span>
-              ) : (
-                <span className="text-sm text-muted">Unassigned</span>
               )}
-            </MetaField>
+            </div>
 
-            <MetaField label="RL POC">
-              {project.rlConsultants.length > 0 ? (
-                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-                  {project.rlConsultants.map((c) => (
-                    <span key={c.userId} className="inline-flex items-center gap-1.5 text-sm text-ink">
-                      <UserAvatar name={c.user.name} deactivated={!c.user.isActive} size="sm" />
-                      {c.user.name}
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                <span className="text-sm text-muted">—</span>
-              )}
-            </MetaField>
-
-            {project.rlProjectId && (
-              <MetaField label="RL Project ID">
-                <span className="tabular text-sm text-ink">{project.rlProjectId}</span>
-              </MetaField>
-            )}
-          </div>
-
-          {/* Timelines */}
-          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <TimelineTile
-              label="RL Timeline"
-              accent={ATTRIBUTION_COLORS.rl}
-              range={rangeText(project.rlStartDate, project.rlCommittedDeadline)}
-              note={rlDays != null ? `${rlDays} Days proposed` : "Not set"}
-              danger={pastDeadline}
-            />
-            <TimelineTile
-              label="Mako Timeline"
-              accent={ATTRIBUTION_COLORS.mako}
-              range={rangeText(project.makoStartDate, project.makoInternalDeadline)}
-              note={makoDays != null ? `${makoDays} Days promised` : "Not set"}
-            />
-            <TimelineTile
-              label="Actual"
-              accent="#8a93a2"
-              range={project.actualCompletionDate ? formatDate(project.actualCompletionDate) : "In progress"}
-              note={project.actualCompletionDate ? "Completed" : "Not completed"}
-            />
+            {/* Visual timeline */}
+            <div className="lg:border-l lg:border-line lg:pl-6">
+              <ProjectTimelineBar
+                rlStart={project.rlStartDate}
+                rlEnd={project.rlCommittedDeadline}
+                makoStart={project.makoStartDate}
+                makoEnd={project.makoInternalDeadline}
+                actual={project.actualCompletionDate}
+                rlDays={rlDays}
+                makoDays={makoDays}
+                now={now}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -253,42 +245,3 @@ export default async function ProjectDetailPage({
   );
 }
 
-// ── Header helpers ──────────────────────────────────────────────────────────
-function rangeText(start: Date | null, end: Date | null): string {
-  if (!start && !end) return "Not set";
-  return `${formatDate(start)} → ${formatDate(end)}`;
-}
-
-function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-2xs font-medium uppercase tracking-wide text-muted">{label}</p>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-}
-
-function TimelineTile({
-  label,
-  accent,
-  range,
-  note,
-  danger = false,
-}: {
-  label: string;
-  accent: string;
-  range: string;
-  note: string;
-  danger?: boolean;
-}) {
-  return (
-    <div className="rounded-lg border border-line bg-surface-2/40 px-3 py-2.5">
-      <p className="flex items-center gap-1.5 text-2xs font-medium uppercase tracking-wide text-muted">
-        <span className="h-2 w-2 rounded-[3px]" style={{ backgroundColor: accent }} />
-        {label}
-      </p>
-      <p className={`mt-1 text-sm font-medium ${danger ? "text-danger" : "text-ink"}`}>{range}</p>
-      <p className="tabular text-2xs text-muted">{note}</p>
-    </div>
-  );
-}

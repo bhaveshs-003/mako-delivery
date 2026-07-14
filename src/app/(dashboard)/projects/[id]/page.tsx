@@ -75,8 +75,8 @@ export default async function ProjectDetailPage({
     <div className="space-y-4">
       {/* Project header */}
       <div className="rounded-xl bg-surface p-3.5 shadow-card">
-          {/* Title + actions */}
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          {/* Title + timeline donut + actions */}
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="min-w-0">
               <div className="mb-1 flex items-center gap-2">
                 <span className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-2xs font-medium text-ink-2">
@@ -92,6 +92,19 @@ export default async function ProjectDetailPage({
               <h1 className="truncate text-xl font-semibold tracking-tight text-ink">
                 {project.title}
               </h1>
+            </div>
+
+            {/* Timeline summary — occupies the centre of the header */}
+            <div className="flex flex-1 justify-center">
+              <ProjectTimelineBar
+                rlStart={project.rlStartDate}
+                rlEnd={project.rlCommittedDeadline}
+                makoStart={project.makoStartDate}
+                makoEnd={project.makoInternalDeadline}
+                actual={project.actualCompletionDate}
+                rlDays={rlDays}
+                makoDays={makoDays}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -121,56 +134,40 @@ export default async function ProjectDetailPage({
             </div>
           )}
 
-          {/* Compact meta + timeline summary */}
-          <div className="mt-2.5 grid gap-x-6 gap-y-2 border-t border-line pt-2.5 lg:grid-cols-[minmax(0,auto)_minmax(300px,1fr)]">
-            {/* People — compact, inline */}
-            <div className="flex flex-col gap-1.5 text-xs">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-12 shrink-0 text-muted">Lead</span>
-                {project.projectLead ? (
-                  <span className="inline-flex items-center gap-1.5 text-ink">
-                    <UserAvatar name={project.projectLead.name} deactivated={!project.projectLead.isActive} size="sm" />
-                    {project.projectLead.name}
-                  </span>
-                ) : (
-                  <span className="text-muted">Unassigned</span>
-                )}
-              </span>
-              <span className="inline-flex items-start gap-1.5">
-                <span className="w-12 shrink-0 pt-1 text-muted">RL POC</span>
-                {project.rlConsultants.length > 0 ? (
-                  <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                    {project.rlConsultants.map((c) => (
-                      <span key={c.userId} className="inline-flex items-center gap-1.5 text-ink">
-                        <UserAvatar name={c.user.name} deactivated={!c.user.isActive} size="sm" />
-                        {c.user.name}
-                      </span>
-                    ))}
-                  </span>
-                ) : (
-                  <span className="pt-1 text-muted">—</span>
-                )}
-              </span>
-              {project.rlProjectId && (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="w-12 shrink-0 text-muted">RL ID</span>
-                  <span className="tabular text-ink">{project.rlProjectId}</span>
+          {/* People — single compact row */}
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-8 gap-y-2 border-t border-line pt-2.5 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-muted">Lead</span>
+              {project.projectLead ? (
+                <span className="inline-flex items-center gap-1.5 text-ink">
+                  <UserAvatar name={project.projectLead.name} deactivated={!project.projectLead.isActive} size="sm" />
+                  {project.projectLead.name}
                 </span>
+              ) : (
+                <span className="text-muted">Unassigned</span>
               )}
-            </div>
-
-            {/* Visual timeline */}
-            <div className="lg:border-l lg:border-line lg:pl-6">
-              <ProjectTimelineBar
-                rlStart={project.rlStartDate}
-                rlEnd={project.rlCommittedDeadline}
-                makoStart={project.makoStartDate}
-                makoEnd={project.makoInternalDeadline}
-                actual={project.actualCompletionDate}
-                rlDays={rlDays}
-                makoDays={makoDays}
-              />
-            </div>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-muted">RL POC</span>
+              {project.rlConsultants.length > 0 ? (
+                <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                  {project.rlConsultants.map((c) => (
+                    <span key={c.userId} className="inline-flex items-center gap-1.5 text-ink">
+                      <UserAvatar name={c.user.name} deactivated={!c.user.isActive} size="sm" />
+                      {c.user.name}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+            </span>
+            {project.rlProjectId && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-muted">RL ID</span>
+                <span className="tabular text-ink">{project.rlProjectId}</span>
+              </span>
+            )}
           </div>
       </div>
 

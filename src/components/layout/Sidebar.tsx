@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiFetch } from "@/lib/http";
 import {
   LogOut,
   ChevronsLeft,
@@ -58,6 +60,14 @@ export function Sidebar({
   const items = NAV_BY_ROLE[role] ?? [];
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Per-section badge counts (pending approvals, open tickets, unread, tasks).
+  const { data } = useQuery({
+    queryKey: ["nav-badges"],
+    queryFn: () => apiFetch<{ badges: Record<string, number> }>("/api/nav-badges"),
+    refetchInterval: 60_000,
+  });
+  const badges = data?.badges ?? {};
 
   useEffect(() => {
     setMounted(true);
@@ -119,6 +129,8 @@ export function Sidebar({
         {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
+          const count = badges[item.href] ?? 0;
+          const hasBadge = count > 0;
           return (
             <Link
               key={item.href}
@@ -132,14 +144,29 @@ export function Sidebar({
                   : "text-ink-2 hover:bg-surface-2 hover:text-ink"
               )}
             >
-              <NavIcon
-                name={item.icon}
-                className={cn(
-                  "h-[18px] w-[18px] shrink-0",
-                  active ? "text-brand" : "text-muted group-hover:text-ink-2"
+              <span className="relative shrink-0">
+                <NavIcon
+                  name={item.icon}
+                  className={cn(
+                    "h-[18px] w-[18px]",
+                    active ? "text-brand" : "text-muted group-hover:text-ink-2"
+                  )}
+                />
+                {/* Collapsed: a small dot on the icon corner */}
+                {hasBadge && collapsed && (
+                  <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger ring-2 ring-surface" />
                 )}
-              />
-              {!collapsed && item.label}
+              </span>
+              {!collapsed && (
+                <>
+                  {item.label}
+                  {hasBadge && (
+                    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+                      {count > 9 ? "9+" : count}
+                    </span>
+                  )}
+                </>
+              )}
             </Link>
           );
         })}

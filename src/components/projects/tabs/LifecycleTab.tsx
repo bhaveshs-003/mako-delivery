@@ -8,11 +8,12 @@ import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusCon
 import { SubmitMilestoneApproval } from "@/components/projects/SubmitMilestoneApproval";
 import { MilestoneReorder } from "@/components/projects/MilestoneReorder";
 import { MilestonePlanSubmit } from "@/components/projects/MilestonePlanSubmit";
+import { MilestoneGantt } from "@/components/projects/MilestoneGantt";
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { EditMilestoneForm } from "@/components/forms/EditMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
-import { allocationPoolDays } from "@/lib/allocation";
+import { allocationPoolDays, scheduleAnchor } from "@/lib/allocation";
 import { formatDate } from "@/lib/utils";
 import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
 import { ListChecks, AlertTriangle, ShieldAlert } from "lucide-react";
@@ -167,6 +168,24 @@ export async function LifecycleTab({
             approves the <span className="font-medium">scope understanding</span> in the{" "}
             <span className="font-medium">Scope Understanding</span> tab.
           </p>
+        </div>
+      )}
+
+      {milestones.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Plan Timeline</p>
+          <MilestoneGantt
+            milestones={milestones.map((m) => ({
+              id: m.id,
+              name: m.name,
+              status: m.status,
+              type: m.type,
+              allocatedDays: m.allocatedDays,
+            }))}
+            anchor={project ? scheduleAnchor(project) : null}
+            projectEnd={project?.makoInternalDeadline ?? project?.rlCommittedDeadline ?? null}
+            now={now}
+          />
         </div>
       )}
 

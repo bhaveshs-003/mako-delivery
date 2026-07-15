@@ -23,6 +23,7 @@ export function ProjectActions({
   canArchive,
   isArchived,
   scopeApproved,
+  planApproved,
 }: {
   projectId: string;
   status: string;
@@ -30,6 +31,7 @@ export function ProjectActions({
   canArchive: boolean;
   isArchived: boolean;
   scopeApproved: boolean;
+  planApproved: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -60,8 +62,14 @@ export function ProjectActions({
         <Button
           size="sm"
           onClick={() => act({ action: "start" }, "Project started")}
-          disabled={busy || !scopeApproved}
-          title={scopeApproved ? undefined : "Approve the scope understanding before starting"}
+          disabled={busy || !scopeApproved || !planApproved}
+          title={
+            !scopeApproved
+              ? "Approve the scope understanding before starting"
+              : !planApproved
+                ? "The milestone plan must be approved before starting"
+                : undefined
+          }
         >
           <Play className="h-4 w-4" /> Start
         </Button>

@@ -120,6 +120,7 @@ export default async function ProjectDetailPage({
                 canArchive={canArchive}
                 isArchived={project.isArchived}
                 scopeApproved={project.scopeApproved}
+                planApproved={project.milestonePlanStatus === "approved"}
               />
             </div>
           </div>

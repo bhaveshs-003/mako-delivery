@@ -68,7 +68,9 @@ export const patchUserSchema = z.object({
 // ── Dependencies (Phase 3) ──────────────────────────────────────────────────
 export const createDependencySchema = z.object({
   projectId: uuid,
-  milestoneId: uuid.optional().nullable(),
+  // A dependency must be tied to a milestone; the subtask link is optional.
+  milestoneId: uuid,
+  subtaskId: uuid.optional().nullable(),
   type: z.enum(["credential", "source_sheet", "approval", "clarification", "confirmation", "other"]),
   description: z.string().min(1, "Description is required").max(2000),
   requestedFromParty: z.enum(["mako", "rl", "client_via_rl"]),

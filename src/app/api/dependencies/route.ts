@@ -28,6 +28,21 @@ export async function POST(req: Request) {
   if (!canActOnProject(user, project))
     return badRequest("You are not assigned to this project");
 
+  // The milestone must belong to this project; the optional subtask must belong
+  // to that milestone.
+  const milestone = await prisma.milestone.findFirst({
+    where: { id: input.milestoneId, projectId: input.projectId },
+    select: { id: true },
+  });
+  if (!milestone) return badRequest("The linked milestone is not on this project");
+  if (input.subtaskId) {
+    const subtask = await prisma.subtask.findFirst({
+      where: { id: input.subtaskId, milestoneId: input.milestoneId },
+      select: { id: true },
+    });
+    if (!subtask) return badRequest("The linked subtask is not in that milestone");
+  }
+
   try {
     // Derive burn/breach at creation (supports retroactive logging, spec §5.3.3).
     const state = deriveDependencyState({
@@ -41,7 +56,8 @@ export async function POST(req: Request) {
       const d = await tx.dependency.create({
         data: {
           projectId: input.projectId,
-          milestoneId: input.milestoneId ?? null,
+          milestoneId: input.milestoneId,
+          subtaskId: input.subtaskId ?? null,
           type: input.type,
           description: input.description,
           requestedFromParty: input.requestedFromParty,

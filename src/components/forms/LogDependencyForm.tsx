@@ -19,6 +19,8 @@ import { apiFetch } from "@/lib/http";
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
+type Milestone = { id: string; name: string; subtasks: { id: string; title: string }[] };
+
 export function LogDependencyForm({
   projectId,
   slaDefaults,
@@ -26,7 +28,7 @@ export function LogDependencyForm({
 }: {
   projectId: string;
   slaDefaults: Record<string, number>;
-  milestones: { id: string; name: string }[];
+  milestones: Milestone[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -38,13 +40,16 @@ export function LogDependencyForm({
   const [dateRequested, setDateRequested] = useState(TODAY);
   const [sla, setSla] = useState(slaDefaults["credential"] ?? 5);
   const [milestoneId, setMilestoneId] = useState("");
+  const [subtaskId, setSubtaskId] = useState("");
+
+  const subtasks = milestones.find((m) => m.id === milestoneId)?.subtasks ?? [];
 
   function onTypeChange(t: string) {
     setType(t);
     setSla(slaDefaults[t] ?? 5); // auto-fill from org SLA config (spec §5.3.3)
   }
 
-  const valid = description.trim() && dateRequested && sla >= 0;
+  const valid = description.trim() && dateRequested && sla >= 0 && !!milestoneId;
 
   async function submit() {
     setBusy(true);
@@ -53,7 +58,8 @@ export function LogDependencyForm({
         method: "POST",
         body: JSON.stringify({
           projectId,
-          milestoneId: milestoneId || null,
+          milestoneId,
+          subtaskId: subtaskId || null,
           type,
           description,
           requestedFromParty: from,
@@ -65,6 +71,7 @@ export function LogDependencyForm({
       setOpen(false);
       setDescription("");
       setMilestoneId("");
+      setSubtaskId("");
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to log dependency");
@@ -115,16 +122,41 @@ export function LogDependencyForm({
               <Input type="number" min={0} value={sla} onChange={(e) => setSla(Number(e.target.value))} />
             </Field>
           </div>
-          {milestones.length > 0 && (
-            <Field label="Linked Milestone">
-              <Select value={milestoneId} onChange={(e) => setMilestoneId(e.target.value)}>
-                <option value="">— None —</option>
+          <div className="grid grid-cols-2 gap-4">
+            <Field
+              label="Linked Milestone"
+              required
+              hint={milestones.length === 0 ? "Add a milestone first" : undefined}
+            >
+              <Select
+                value={milestoneId}
+                onChange={(e) => {
+                  setMilestoneId(e.target.value);
+                  setSubtaskId(""); // reset subtask when the milestone changes
+                }}
+                disabled={milestones.length === 0}
+              >
+                <option value="">Select a milestone…</option>
                 {milestones.map((m) => (
                   <option key={m.id} value={m.id}>{m.name}</option>
                 ))}
               </Select>
             </Field>
-          )}
+            <Field label="Linked Subtask" hint="Optional">
+              <Select
+                value={subtaskId}
+                onChange={(e) => setSubtaskId(e.target.value)}
+                disabled={!milestoneId || subtasks.length === 0}
+              >
+                <option value="">
+                  {!milestoneId ? "Select a milestone first" : subtasks.length === 0 ? "No subtasks" : "— None —"}
+                </option>
+                {subtasks.map((s) => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
         </div>
         <DialogFooter>
           <DialogClose asChild>

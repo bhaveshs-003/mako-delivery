@@ -24,11 +24,19 @@ export async function DependenciesTab({
     prisma.dependency.findMany({
       where: { projectId },
       orderBy: { dateRequested: "desc" },
+      include: {
+        milestone: { select: { name: true } },
+        subtask: { select: { title: true } },
+      },
     }),
     prisma.slaConfig.findMany(),
     prisma.milestone.findMany({
-      where: { projectId },
-      select: { id: true, name: true },
+      where: { projectId, isArchived: false },
+      select: {
+        id: true,
+        name: true,
+        subtasks: { select: { id: true, title: true }, orderBy: { sortOrder: "asc" } },
+      },
       orderBy: { sortOrder: "asc" },
     }),
   ]);
@@ -106,8 +114,15 @@ export async function DependenciesTab({
                       <td className="px-3 py-3 capitalize text-navy">
                         {d.type.replace(/_/g, " ")}
                       </td>
-                      <td className="max-w-[220px] truncate px-3 py-3 text-slate" title={d.description}>
-                        {d.description}
+                      <td className="max-w-[240px] px-3 py-3 text-slate">
+                        <p className="truncate" title={d.description}>{d.description}</p>
+                        {d.milestone && (
+                          <p className="mt-0.5 flex items-center gap-1 truncate text-2xs text-muted" title={d.subtask ? `${d.milestone.name} · ${d.subtask.title}` : d.milestone.name}>
+                            <Link2 className="h-3 w-3 shrink-0" />
+                            {d.milestone.name}
+                            {d.subtask && <span className="text-muted"> · {d.subtask.title}</span>}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-3 capitalize text-slate">
                         {d.requestedFromParty.replace(/_/g, " ")}

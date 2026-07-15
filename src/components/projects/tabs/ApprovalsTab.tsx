@@ -24,14 +24,17 @@ export async function ApprovalsTab({
       orderBy: { requestedAt: "desc" },
       include: {
         milestone: { select: { name: true } },
+        subtask: { select: { title: true } },
         requestedBy: { select: { name: true } },
       },
     }),
     prisma.milestone.findMany({
-      // Only CR / delta milestones are individually approvable here; main-scope
-      // is approved via the whole milestone plan.
-      where: { projectId, isArchived: false, type: { not: "main_scope" } },
-      select: { id: true, name: true },
+      where: { projectId, isArchived: false },
+      select: {
+        id: true,
+        name: true,
+        subtasks: { select: { id: true, title: true }, orderBy: { sortOrder: "asc" } },
+      },
       orderBy: { sortOrder: "asc" },
     }),
   ]);
@@ -71,7 +74,10 @@ export async function ApprovalsTab({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={a.status} />
-                    <span className="font-medium text-navy">{a.milestone.name}</span>
+                    <span className="font-medium text-navy">
+                      {a.milestone.name}
+                      {a.subtask && <span className="font-normal text-slate"> · {a.subtask.title}</span>}
+                    </span>
                     {breached && (
                       <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-medium text-danger">
                         SLA BREACHED

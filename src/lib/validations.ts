@@ -170,6 +170,7 @@ export const patchSubtaskSchema = z
 export const createApprovalSchema = z.object({
   projectId: uuid,
   milestoneId: uuid,
+  subtaskId: uuid.optional().nullable(),
   requestComment: z.string().min(1, "A request comment is required").max(2000),
 });
 

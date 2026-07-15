@@ -462,6 +462,7 @@ model Subtask {
   updatedAt     DateTime      @updatedAt
 
   dependencies  Dependency[]
+  approvals     ApprovalRequest[]
 
   @@index([milestoneId])
   @@index([assignedToId])
@@ -541,6 +542,9 @@ model ApprovalRequest {
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   milestoneId String
   milestone   Milestone @relation(fields: [milestoneId], references: [id])
+  // Optional finer link to a specific subtask within the milestone.
+  subtaskId String?
+  subtask   Subtask? @relation(fields: [subtaskId], references: [id], onDelete: SetNull)
 
   requestedById  String
   requestedBy    User     @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])

@@ -22,7 +22,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     where: { id: params.id },
     include: {
       project: { include: { rlConsultants: { select: { userId: true } }, resources: { select: { userId: true } } } },
-      milestone: { select: { name: true } },
+      milestone: { select: { name: true, type: true } },
     },
   });
   if (!approval) return notFound("Approval request not found");
@@ -68,20 +68,25 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           // NOTE: slaDeadline intentionally NOT modified on reject.
         },
       });
-      await tx.milestone.update({
-        where: { id: approval.milestoneId },
-        data: {
-          approvalStatus: approved ? "approved" : "rejected",
-          approvedBy: approved ? user.id : null,
-          approvedAt: approved ? new Date() : null,
-          approvalComment: body.decisionComment,
-          approvalDurationDays: approved
-            ? Math.max(0, Math.round((Date.now() - approval.requestedAt.getTime()) / 86400000))
-            : null,
-          // Approved → cleared to start (In-Progress); rejected → back for rework.
-          status: "ongoing",
-        },
-      });
+      // Only a milestone-level CR/delta approval drives the milestone's state.
+      // Main-scope (whole-plan) and subtask-scoped sign-offs leave it untouched.
+      const drivesMilestone = approval.milestone.type !== "main_scope" && !approval.subtaskId;
+      if (drivesMilestone) {
+        await tx.milestone.update({
+          where: { id: approval.milestoneId },
+          data: {
+            approvalStatus: approved ? "approved" : "rejected",
+            approvedBy: approved ? user.id : null,
+            approvedAt: approved ? new Date() : null,
+            approvalComment: body.decisionComment,
+            approvalDurationDays: approved
+              ? Math.max(0, Math.round((Date.now() - approval.requestedAt.getTime()) / 86400000))
+              : null,
+            // Approved → cleared to start (In-Progress); rejected → back for rework.
+            status: "ongoing",
+          },
+        });
+      }
 
       await writeAudit(
         { actor, action: approved ? "approval.approve" : "approval.reject", entityType: "approval_request", entityId: a.id, before: { status: "pending" }, after: { status: a.status }, metadata: { projectId: approval.projectId } },

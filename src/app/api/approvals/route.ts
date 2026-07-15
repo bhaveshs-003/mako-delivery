@@ -32,10 +32,18 @@ export async function POST(req: Request) {
     where: { id: input.milestoneId, projectId: input.projectId },
   });
   if (!milestone) return notFound("Milestone not found");
-  // Main-scope milestones are approved as part of the whole milestone plan, not
-  // individually; only change-request / delta-scope milestones are approved here.
-  if (milestone.type === "main_scope")
-    return badRequest("Main-scope milestones are approved via the whole milestone plan");
+  // Optional subtask link must belong to the chosen milestone.
+  if (input.subtaskId) {
+    const subtask = await prisma.subtask.count({
+      where: { id: input.subtaskId, milestoneId: input.milestoneId },
+    });
+    if (subtask === 0) return badRequest("The linked subtask is not in that milestone");
+  }
+
+  // Requesting RL sign-off drives the milestone's own approval state ONLY for a
+  // milestone-level CR/delta approval. Main-scope (governed by the whole-plan
+  // approval) and subtask-scoped sign-offs don't change the milestone.
+  const drivesMilestone = milestone.type !== "main_scope" && !input.subtaskId;
 
   try {
     // SLA deadline anchored at creation (spec §7.1: stored absolute, not recomputed).
@@ -49,16 +57,20 @@ export async function POST(req: Request) {
         data: {
           projectId: input.projectId,
           milestoneId: input.milestoneId,
+          subtaskId: input.subtaskId ?? null,
           requestedById: user.id,
           requestComment: input.requestComment,
           slaDeadline,
         },
       });
-      // Reflect pending approval on the milestone (spec §2.4).
-      await tx.milestone.update({
-        where: { id: input.milestoneId },
-        data: { approvalStatus: "pending", approvalSlaStartedAt: now },
-      });
+      // Reflect pending approval on the milestone (spec §2.4) — only for a
+      // milestone-level CR/delta approval.
+      if (drivesMilestone) {
+        await tx.milestone.update({
+          where: { id: input.milestoneId },
+          data: { approvalStatus: "pending", approvalSlaStartedAt: now },
+        });
+      }
       await writeAudit(
         { actor: toAuditActor(user, req), action: "approval.request", entityType: "approval_request", entityId: a.id, after: { milestoneId: input.milestoneId }, metadata: { projectId: input.projectId } },
         tx

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Input } from "@/components/ui/form-field";
+import { DayStepper } from "@/components/ui/day-stepper";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
@@ -55,21 +55,17 @@ export function SlaEditor({ initial }: { initial: Row[] }) {
               {row.dependencyType.replace(/_/g, " ")}
             </td>
             <td className="px-4 py-3">
-              <Input
-                type="number"
-                min={0}
-                className="w-24"
-                value={row.thresholdDays}
-                onChange={(e) => update(row.dependencyType, "thresholdDays", Number(e.target.value))}
+              <DayStepper
+                compact
+                value={String(row.thresholdDays)}
+                onChange={(v) => update(row.dependencyType, "thresholdDays", Number(v) || 0)}
               />
             </td>
             <td className="px-4 py-3">
-              <Input
-                type="number"
-                min={0}
-                className="w-24"
-                value={row.approvalSlaDays}
-                onChange={(e) => update(row.dependencyType, "approvalSlaDays", Number(e.target.value))}
+              <DayStepper
+                compact
+                value={String(row.approvalSlaDays)}
+                onChange={(v) => update(row.dependencyType, "approvalSlaDays", Number(v) || 0)}
               />
             </td>
             <td className="px-4 py-3 text-right">

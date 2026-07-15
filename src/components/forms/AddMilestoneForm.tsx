@@ -203,14 +203,7 @@ export function AddMilestoneForm({
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </Select>
-                  <Input
-                    type="number"
-                    min={0}
-                    className="w-16"
-                    placeholder="days"
-                    value={s.days}
-                    onChange={(e) => updateSub(i, { days: e.target.value })}
-                  />
+                  <DayStepper compact value={s.days} onChange={(v) => updateSub(i, { days: v })} />
                   <button
                     type="button"
                     onClick={() => setSubtasks((rows) => rows.filter((_, j) => j !== i))}

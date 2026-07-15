@@ -14,6 +14,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
+import { DayStepper } from "@/components/ui/day-stepper";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 
@@ -119,7 +120,7 @@ export function LogDependencyForm({
               <Input type="date" max={TODAY} value={dateRequested} onChange={(e) => setDateRequested(e.target.value)} />
             </Field>
             <Field label="SLA Threshold (days)" required hint="Auto-filled from org config">
-              <Input type="number" min={0} value={sla} onChange={(e) => setSla(Number(e.target.value))} />
+              <DayStepper value={String(sla)} onChange={(v) => setSla(Number(v) || 0)} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">

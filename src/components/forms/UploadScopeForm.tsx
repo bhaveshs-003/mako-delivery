@@ -12,6 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input, Textarea, Field } from "@/components/ui/form-field";
+import { DayStepper } from "@/components/ui/day-stepper";
 import { toast } from "@/components/ui/toast";
 
 /**
@@ -81,21 +82,14 @@ export function UploadScopeForm({
           </DialogHeader>
           <div className="space-y-4">
             {isCR && (
-              <div className="grid grid-cols-[1fr_auto] gap-3">
+              <>
                 <Field label="Title" hint="Short label for this change request">
                   <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Added reporting module" />
                 </Field>
-                <Field label="Timeline impact" hint="Business days added on approval">
-                  <Input
-                    type="number"
-                    min={0}
-                    className="w-28"
-                    value={impact}
-                    onChange={(e) => setImpact(e.target.value)}
-                    placeholder="0"
-                  />
+                <Field label="Timeline impact" hint="Business days added to the deadline on approval">
+                  <DayStepper value={impact} onChange={setImpact} />
                 </Field>
-              </div>
+              </>
             )}
             <Field label="Document" required hint="PDF / DOCX / XLSX · max 25MB">
               <input

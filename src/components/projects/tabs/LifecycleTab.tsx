@@ -13,7 +13,7 @@ import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { EditMilestoneForm } from "@/components/forms/EditMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
-import { allocationPoolDays, scheduleAnchor } from "@/lib/allocation";
+import { allocationPoolDays } from "@/lib/allocation";
 import { formatDate } from "@/lib/utils";
 import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
 import { ListChecks, AlertTriangle, ShieldAlert } from "lucide-react";
@@ -105,6 +105,24 @@ export async function LifecycleTab({
     label: c.scopeDelta.length > 60 ? `${c.scopeDelta.slice(0, 60)}…` : c.scopeDelta,
   }));
 
+  const isoDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
+  const timelineStart = isoDate(project?.makoStartDate ?? project?.rlStartDate);
+  const timelineEnd = isoDate(project?.makoInternalDeadline ?? project?.rlCommittedDeadline);
+
+  const addMilestoneEl =
+    canManage && scopeApproved ? (
+      <AddMilestoneForm
+        projectId={projectId}
+        resources={resources}
+        totalDays={totalDays}
+        usedDays={usedDays}
+        planApproved={planApproved}
+        changeRequests={changeRequests}
+        timelineStart={timelineStart}
+        timelineEnd={timelineEnd}
+      />
+    ) : null;
+
   const commentsByMilestone = new Map<string, typeof commentRows>();
   for (const c of commentRows) {
     if (!c.milestoneId) continue;
@@ -147,25 +165,16 @@ export async function LifecycleTab({
             </p>
           )}
         </div>
-        {canManage && (
-          <AddMilestoneForm
-            projectId={projectId}
-            resources={resources}
-            totalDays={totalDays}
-            usedDays={usedDays}
-            planApproved={planApproved}
-            changeRequests={changeRequests}
-          />
-        )}
+        {addMilestoneEl}
       </div>
 
-      {/* Scope reminder — informational; the project can't START until scope is approved. */}
+      {/* Scope gate — milestones can't be created until scope is approved. */}
       {!scopeApproved && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <p>
-            You can build the milestone plan now, but the project can’t be started until the RL POC
-            approves the <span className="font-medium">scope understanding</span> in the{" "}
+            The <span className="font-medium">scope understanding</span> must be approved by the RL POC before
+            you can start building the milestone plan. Declare the timeline and upload the scope in the{" "}
             <span className="font-medium">Scope Understanding</span> tab.
           </p>
         </div>
@@ -178,19 +187,33 @@ export async function LifecycleTab({
             milestones={milestones.map((m) => ({
               id: m.id,
               name: m.name,
-              status: m.status,
               type: m.type,
-              allocatedDays: m.allocatedDays,
+              status: m.status,
+              start: m.startDate,
+              end: m.dueDate,
+              subtasks: m.subtasks.map((s) => ({
+                id: s.id,
+                title: s.title,
+                assignee: s.assignedTo?.name ?? null,
+                status: s.status,
+                start: s.startDate,
+                end: s.dueDate,
+              })),
             }))}
-            anchor={project ? scheduleAnchor(project) : null}
-            projectEnd={project?.makoInternalDeadline ?? project?.rlCommittedDeadline ?? null}
+            rlStart={project?.rlStartDate ?? null}
+            rlEnd={project?.rlCommittedDeadline ?? null}
+            makoStart={project?.makoStartDate ?? null}
+            makoEnd={project?.makoInternalDeadline ?? null}
             now={now}
+            addButton={addMilestoneEl}
           />
         </div>
       )}
 
       {milestones.length === 0 ? (
-        <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones, then submit the whole plan to RL for approval." />
+        scopeApproved && (
+          <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones with date ranges, then submit the whole plan to RL for approval." />
+        )
       ) : (
         <ol className="space-y-2">
           {milestones.map((m, idx) => {
@@ -204,7 +227,10 @@ export async function LifecycleTab({
               : canManage && m.approvalStatus !== "approved" && m.approvalStatus !== "pending";
             const reorderable = isMain && canManage && !planLocked;
             const submittable = !isMain && canManage && (m.approvalStatus === "not_required" || m.approvalStatus === "rejected");
-            const executable = canManage && (isMain ? planApproved : m.approvalStatus === "approved");
+            // Execution (status changes) is unlocked once the plan (main scope) or
+            // the individual milestone (CR/delta) is approved.
+            const inExecution = isMain ? planApproved : m.approvalStatus === "approved";
+            const executable = canManage && inExecution;
 
             return (
               <li key={m.id} className="rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs">
@@ -259,15 +285,19 @@ export async function LifecycleTab({
                           name: m.name,
                           description: m.description ?? "",
                           ownerId: m.ownerId ?? "",
-                          allocatedDays: m.allocatedDays != null ? String(m.allocatedDays) : "",
+                          start: isoDate(m.startDate) ?? "",
+                          end: isoDate(m.dueDate) ?? "",
                         }}
                         initialSubtasks={m.subtasks.map((s) => ({
                           title: s.title,
                           assignedToId: s.assignedToId ?? "",
-                          days: s.allocatedDays != null ? String(s.allocatedDays) : "",
+                          start: isoDate(s.startDate) ?? "",
+                          end: isoDate(s.dueDate) ?? "",
                         }))}
                         poolTotal={totalDays}
                         poolUsedByOthers={usedDays - (m.allocatedDays ?? 0)}
+                        timelineStart={timelineStart}
+                        timelineEnd={timelineEnd}
                       />
                     )}
                     {submittable && (
@@ -289,8 +319,10 @@ export async function LifecycleTab({
                 {m.subtasks.length > 0 && (
                   <div className="space-y-0.5 border-t border-line bg-surface-2/40 px-3 py-2">
                     {m.subtasks.map((s) => {
+                      // Subtask status is editable only once the milestone is in
+                      // execution (plan/milestone approved).
                       const canEditSubtask =
-                        canManage || (userRole === "resource" && s.assignedToId === userId);
+                        inExecution && (canManage || (userRole === "resource" && s.assignedToId === userId));
                       return (
                         <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md px-1.5 py-1 hover:bg-surface">
                           <div className="flex min-w-0 items-center gap-2">

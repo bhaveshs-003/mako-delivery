@@ -5,7 +5,7 @@ import { patchMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
-import { recomputeDueDates } from "@/lib/milestone-scheduling";
+import { daysBetween } from "@/lib/allocation";
 
 // PATCH /api/milestones/[id] — edit or change work status.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -64,7 +64,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         { actor: toAuditActor(user, req), action: "milestone.reorder", entityType: "milestone", entityId: a.id, after: { direction: body.direction }, metadata: { projectId: milestone.projectId } },
         tx
       );
-      await recomputeDueDates(tx, milestone.projectId);
     });
     return ok({ reordered: true });
   }
@@ -122,8 +121,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
                 name: body.name ?? undefined,
                 description: body.description ?? undefined,
                 ownerId: body.ownerId ?? undefined,
+                startDate: body.startDate ?? undefined,
                 dueDate: body.dueDate ?? undefined,
-                allocatedDays: body.allocatedDays ?? undefined,
+                allocatedDays:
+                  body.startDate !== undefined || body.dueDate !== undefined
+                    ? daysBetween(body.startDate ?? milestone.startDate, body.dueDate ?? milestone.dueDate)
+                    : undefined,
               },
       });
 
@@ -136,7 +139,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
               milestoneId: milestone.id,
               title: s.title,
               assignedToId: s.assignedToId ?? null,
-              allocatedDays: s.allocatedDays ?? null,
+              startDate: s.startDate ?? null,
+              dueDate: s.dueDate ?? null,
+              allocatedDays: daysBetween(s.startDate, s.dueDate),
               sortOrder: i,
               createdBy: user.id,
             })),
@@ -156,8 +161,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         },
         tx
       );
-      // An edit may change allocated days → re-derive the due-date chain.
-      if (body.action === "edit") await recomputeDueDates(tx, milestone.projectId);
       return m;
     });
     return ok(updated);

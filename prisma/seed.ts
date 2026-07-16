@@ -214,13 +214,19 @@ async function main() {
     let mIdx = 0;
     for (const stage of stageNames) {
       const status = mIdx === 0 ? "completed" : mIdx === 1 ? "ongoing" : "yet_to_start";
+      // Date-range allocation: each milestone runs ~4 days, chained.
+      const mStart = addDays(NOW, mIdx * 5 - 8);
+      const mDue = addDays(mStart, 4);
+      const midpoint = addDays(mStart, 2);
       const milestone = await prisma.milestone.create({
         data: {
           projectId: project.id,
           parentStage: stage,
           name: stage,
           ownerId: users[resourceEmail].id,
-          dueDate: addDays(NOW, mIdx * 7 - 3),
+          startDate: mStart,
+          dueDate: mDue,
+          allocatedDays: 4,
           status: status as never,
           type: "main_scope",
           approvalStatus: "not_required",
@@ -228,12 +234,15 @@ async function main() {
           createdBy: users[leadEmail].id,
           subtasks: {
             create: [
-              { title: `${stage} — prep`, assignedToId: users[resourceEmail].id, status: "done", createdBy: users[leadEmail].id },
+              { title: `${stage} — prep`, assignedToId: users[resourceEmail].id, status: "done", startDate: mStart, dueDate: midpoint, allocatedDays: 2, createdBy: users[leadEmail].id },
               {
                 title: `${stage} — execution`,
                 assignedToId: users[resourceEmail].id,
                 status: mIdx === 1 ? "blocked" : mIdx === 0 ? "done" : "not_started",
                 blockedReason: mIdx === 1 ? "Awaiting source-sheet clarification from RL." : null,
+                startDate: midpoint,
+                dueDate: mDue,
+                allocatedDays: 2,
                 createdBy: users[leadEmail].id,
               },
             ],
@@ -252,8 +261,9 @@ async function main() {
         description: "Scope added after plan approval via change request.",
         type: "change_request",
         ownerId: users[resourceEmail].id,
-        allocatedDays: 3,
+        startDate: addDays(NOW, 17),
         dueDate: addDays(NOW, 20),
+        allocatedDays: 3,
         status: projIndex % 2 === 0 ? "yet_to_start" : "ongoing",
         approvalStatus: projIndex % 2 === 0 ? "pending" : "approved",
         approvedBy: projIndex % 2 === 0 ? null : users[rlEmail].id,

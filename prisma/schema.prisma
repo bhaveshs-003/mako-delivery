@@ -405,10 +405,12 @@ model Milestone {
   ownerId String? // assigned Mako resource
   owner   User?   @relation("MilestoneOwner", fields: [ownerId], references: [id])
 
-  dueDate DateTime?
-  status  MilestoneStatus @default(yet_to_start)
+  // Allocation is a date range within the project timeline; day count is derived.
+  startDate DateTime?
+  dueDate   DateTime? // end of the range
+  status    MilestoneStatus @default(yet_to_start)
 
-  // Planning days allocated to this milestone out of the project's total.
+  // Derived day span (end - start), kept for the allocation pool math.
   allocatedDays Int?
 
   // RL approval status (separate from milestone work status)
@@ -453,8 +455,9 @@ model Subtask {
   assignedTo    User?         @relation("SubtaskAssignee", fields: [assignedToId], references: [id])
   status        SubtaskStatus @default(not_started)
   blockedReason String? // mandatory when status = blocked (app-enforced)
+  // Allocation is a date range within the milestone's range; day count is derived.
+  startDate     DateTime?
   dueDate       DateTime?
-  // Planning days allocated to this subtask out of the milestone's days.
   allocatedDays Int?
   sortOrder     Int           @default(0)
   createdBy     String

@@ -14,15 +14,16 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
-import { DayStepper } from "@/components/ui/day-stepper";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
-import { cn } from "@/lib/utils";
 import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
 
 type Person = { id: string; name: string };
-type SubtaskDraft = { title: string; assignedToId: string; days: string };
+type SubtaskDraft = { title: string; assignedToId: string; start: string; end: string };
 type MilestoneType = "main_scope" | "change_request" | "delta_scope";
+
+const dayCount = (a: string, b: string) =>
+  a && b ? Math.max(0, Math.round((+new Date(b) - +new Date(a)) / 86400000)) : null;
 
 export function AddMilestoneForm({
   projectId,
@@ -31,14 +32,17 @@ export function AddMilestoneForm({
   usedDays,
   planApproved,
   changeRequests = [],
+  timelineStart,
+  timelineEnd,
 }: {
   projectId: string;
   resources: Person[];
   totalDays: number;
   usedDays: number;
-  /** After plan approval, only change-request / delta-scope milestones may be added. */
   planApproved: boolean;
   changeRequests?: { id: string; label: string }[];
+  timelineStart?: string | null;
+  timelineEnd?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -46,23 +50,24 @@ export function AddMilestoneForm({
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [stage, setStage] = useState("");
   const [type, setType] = useState<MilestoneType>(planApproved ? "change_request" : "main_scope");
   const [changeRequestId, setChangeRequestId] = useState("");
   const [ownerId, setOwnerId] = useState("");
-  const [days, setDays] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const [subtasks, setSubtasks] = useState<SubtaskDraft[]>([]);
 
   const remainingBefore = Math.max(0, totalDays - usedDays);
-  const milestoneDays = Number(days) || 0;
-  const subUsed = subtasks.reduce((s, t) => s + (Number(t.days) || 0), 0);
-
-  const overProject = milestoneDays > remainingBefore;
-  const overMilestone = subUsed > milestoneDays;
-  const valid = name.trim() && !overProject && !overMilestone && subtasks.every((s) => s.title.trim());
+  const milestoneDays = dayCount(start, end);
+  const overProject = milestoneDays != null && milestoneDays > remainingBefore;
+  const rangeOk = !!start && !!end && new Date(end) >= new Date(start);
+  const subtasksOk = subtasks.every(
+    (s) => s.title.trim() && (!s.start || !s.end || new Date(s.end) >= new Date(s.start))
+  );
+  const valid = name.trim() && rangeOk && !overProject && subtasksOk;
 
   function reset() {
-    setName(""); setDescription(""); setStage(""); setOwnerId(""); setDays("");
+    setName(""); setDescription(""); setOwnerId(""); setStart(""); setEnd("");
     setType(planApproved ? "change_request" : "main_scope"); setChangeRequestId("");
     setSubtasks([]);
   }
@@ -80,17 +85,18 @@ export function AddMilestoneForm({
           projectId,
           name,
           description: description || undefined,
-          parentStage: stage || undefined,
           type,
           changeRequestId: type !== "main_scope" && changeRequestId ? changeRequestId : null,
           ownerId: ownerId || null,
-          allocatedDays: days === "" ? null : Number(days),
+          startDate: start || null,
+          dueDate: end || null,
           subtasks: subtasks
             .filter((s) => s.title.trim())
             .map((s) => ({
               title: s.title,
               assignedToId: s.assignedToId || null,
-              allocatedDays: s.days === "" ? null : Number(s.days),
+              startDate: s.start || null,
+              dueDate: s.end || null,
             })),
         }),
       });
@@ -134,23 +140,6 @@ export function AddMilestoneForm({
                 <option value="delta_scope" disabled={!planApproved}>{MILESTONE_TYPE_LABELS.delta_scope}</option>
               </Select>
             </Field>
-            {type !== "main_scope" && changeRequests.length > 0 ? (
-              <Field label="Link change request" hint="Optional">
-                <Select value={changeRequestId} onChange={(e) => setChangeRequestId(e.target.value)}>
-                  <option value="">— None —</option>
-                  {changeRequests.map((c) => (
-                    <option key={c.id} value={c.id}>{c.label}</option>
-                  ))}
-                </Select>
-              </Field>
-            ) : (
-              <Field label="Stage" hint="Groups it under a lifecycle stage">
-                <Input value={stage} onChange={(e) => setStage(e.target.value)} placeholder="Optional" />
-              </Field>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
             <Field label="Assign to (resource)">
               <Select value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
                 <option value="">— Unassigned —</option>
@@ -159,77 +148,81 @@ export function AddMilestoneForm({
                 ))}
               </Select>
             </Field>
+          </div>
+
+          {type !== "main_scope" && changeRequests.length > 0 && (
+            <Field label="Link change request" hint="Optional">
+              <Select value={changeRequestId} onChange={(e) => setChangeRequestId(e.target.value)}>
+                <option value="">— None —</option>
+                {changeRequests.map((c) => (
+                  <option key={c.id} value={c.id}>{c.label}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
+
+          {/* Date range = allocation */}
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Start date" required>
+              <Input
+                type="date"
+                value={start}
+                min={timelineStart ?? undefined}
+                max={end || timelineEnd || undefined}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </Field>
             <Field
-              label="Allocated Days"
-              hint="Due date is derived from the days allocated"
+              label="End date"
+              required
+              hint={milestoneDays != null ? `${milestoneDays} day${milestoneDays === 1 ? "" : "s"} · ${remainingBefore} of ${totalDays} left` : undefined}
+              error={overProject ? `Only ${remainingBefore} timeline day(s) remain` : undefined}
             >
-              <DayStepper
-                value={days}
-                onChange={setDays}
-                poolTotal={totalDays}
-                poolUsedByOthers={usedDays}
-                over={overProject}
+              <Input
+                type="date"
+                value={end}
+                min={start || timelineStart || undefined}
+                max={timelineEnd ?? undefined}
+                onChange={(e) => setEnd(e.target.value)}
+                className={overProject ? "border-danger" : ""}
               />
             </Field>
           </div>
 
           {/* Subtasks */}
           <div className="rounded-lg border border-line bg-surface-2/40 p-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Subtasks</p>
-              {milestoneDays > 0 && (
-                <span className={cn("text-2xs font-medium", overMilestone ? "text-danger" : "text-muted")}>
-                  {subUsed} / {milestoneDays} milestone days
-                </span>
-              )}
-            </div>
-
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Subtasks</p>
             <div className="mt-2 space-y-2">
               {subtasks.map((s, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    className="flex-1"
-                    placeholder="Subtask title"
-                    value={s.title}
-                    onChange={(e) => updateSub(i, { title: e.target.value })}
-                  />
-                  <Select
-                    className="w-36"
-                    value={s.assignedToId}
-                    onChange={(e) => updateSub(i, { assignedToId: e.target.value })}
-                  >
+                <div key={i} className="flex flex-wrap items-center gap-2">
+                  <Input className="min-w-[140px] flex-1" placeholder="Subtask title" value={s.title} onChange={(e) => updateSub(i, { title: e.target.value })} />
+                  <Select className="w-32" value={s.assignedToId} onChange={(e) => updateSub(i, { assignedToId: e.target.value })}>
                     <option value="">Unassigned</option>
                     {resources.map((r) => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </Select>
-                  <DayStepper compact value={s.days} onChange={(v) => updateSub(i, { days: v })} />
-                  <button
-                    type="button"
-                    onClick={() => setSubtasks((rows) => rows.filter((_, j) => j !== i))}
-                    className="text-muted hover:text-danger"
-                    title="Remove"
-                  >
+                  <Input type="date" className="w-36" value={s.start} min={start || undefined} max={s.end || end || undefined} onChange={(e) => updateSub(i, { start: e.target.value })} />
+                  <Input type="date" className="w-36" value={s.end} min={s.start || start || undefined} max={end || undefined} onChange={(e) => updateSub(i, { end: e.target.value })} />
+                  <button type="button" onClick={() => setSubtasks((rows) => rows.filter((_, j) => j !== i))} className="text-muted hover:text-danger" title="Remove">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))}
               {subtasks.length === 0 && (
-                <p className="text-2xs text-muted">No subtasks. Add tasks and split the milestone days across them.</p>
+                <p className="text-2xs text-muted">No subtasks. Add tasks and set each one’s date range within the milestone.</p>
               )}
             </div>
-
             <button
               type="button"
-              onClick={() => setSubtasks((rows) => [...rows, { title: "", assignedToId: "", days: "" }])}
+              onClick={() => setSubtasks((rows) => [...rows, { title: "", assignedToId: "", start: "", end: "" }])}
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
             >
               <Plus className="h-3.5 w-3.5" /> Add subtask
             </button>
-
-            {overMilestone && (
+            {!subtasksOk && (
               <p className="mt-2 flex items-center gap-1 text-2xs text-danger">
-                <X className="h-3 w-3" /> Subtasks exceed the milestone allocation.
+                <X className="h-3 w-3" /> Each subtask needs a title and a valid date range.
               </p>
             )}
           </div>

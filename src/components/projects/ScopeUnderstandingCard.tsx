@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UploadScopeForm } from "@/components/forms/UploadScopeForm";
 import { ScopeDecision } from "@/components/projects/ScopeDecision";
-import { FileText, ShieldCheck, GitPullRequestArrow } from "lucide-react";
+import { ProjectTimelineForm } from "@/components/forms/ProjectTimelineForm";
+import { CalendarRange, FileText, ShieldCheck, GitPullRequestArrow } from "lucide-react";
 
 type SignedDoc = { doc: ScopeDocument; url: string };
 
@@ -28,9 +29,19 @@ export async function ScopeUnderstandingCard({
   decerId: string;
 }) {
   const [project, docs] = await Promise.all([
-    prisma.project.findUnique({ where: { id: projectId }, select: { scopeApproved: true } }),
+    prisma.project.findUnique({
+      where: { id: projectId },
+      select: {
+        scopeApproved: true,
+        rlStartDate: true,
+        rlCommittedDeadline: true,
+        makoStartDate: true,
+        makoInternalDeadline: true,
+      },
+    }),
     prisma.scopeDocument.findMany({ where: { projectId }, orderBy: { submittedAt: "desc" } }),
   ]);
+  const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : "");
   const signed = await Promise.all(
     docs.map(async (d) => ({ doc: d, url: await getDownloadUrl(d.fileKey) }))
   );
@@ -103,6 +114,27 @@ export async function ScopeUnderstandingCard({
 
   return (
     <div className="space-y-4">
+      {/* Project timeline declaration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarRange className="h-4 w-4 text-muted" /> Project Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-2">
+          <ProjectTimelineForm
+            projectId={projectId}
+            canEdit={canSubmit}
+            initial={{
+              rlStart: iso(project?.rlStartDate),
+              rlEnd: iso(project?.rlCommittedDeadline),
+              makoStart: iso(project?.makoStartDate),
+              makoEnd: iso(project?.makoInternalDeadline),
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {/* Scope understanding */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">

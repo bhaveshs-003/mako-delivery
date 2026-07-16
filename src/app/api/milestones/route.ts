@@ -4,12 +4,16 @@ import { readJson, ok, badRequest, notFound, serverError } from "@/lib/api";
 import { createMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
-import { allocationPoolDays } from "@/lib/allocation";
-import { recomputeDueDates } from "@/lib/milestone-scheduling";
+import { daysBetween } from "@/lib/allocation";
+
+// Derived day span of a [start, end] range (null when the range is incomplete).
+function rangeDays(start?: Date | null, end?: Date | null): number | null {
+  return daysBetween(start, end);
+}
 
 // POST /api/milestones — add a milestone (Sub-admin scoped / Admin+ full),
-// optionally with inline subtasks. Enforces the day-allocation hierarchy:
-// milestone days <= project's unallocated days; subtask days <= milestone days.
+// optionally with inline subtasks. Allocation is by date range; day counts are
+// derived from the range for the allocation pool.
 export async function POST(req: Request) {
   const guard = await requireUser();
   if ("response" in guard) return guard.response;
@@ -30,9 +34,11 @@ export async function POST(req: Request) {
   if (!canActOnProject(user, project))
     return badRequest("You are not assigned to this project");
 
-  // ── Plan gating ───────────────────────────────────────────────────────────
-  // Milestones can be drafted before scope approval (only project START is
-  // gated on scope). Plan state still governs what kind can be added.
+  // ── Scope + plan gating ───────────────────────────────────────────────────
+  // The scope understanding must be approved before the milestone plan is built.
+  if (!project.scopeApproved)
+    return badRequest("The scope understanding must be approved before creating milestones");
+
   const planApproved = project.milestonePlanStatus === "approved";
   if (project.milestonePlanStatus === "pending_approval")
     return badRequest("The milestone plan is awaiting RL approval and is locked");
@@ -61,29 +67,6 @@ export async function POST(req: Request) {
       return badRequest("Subtask assignees must be resources on this project");
   }
 
-  // ── Time-allocation hierarchy ─────────────────────────────────────────────
-  if (input.allocatedDays != null) {
-    // Enforce the project cap only when a timeline (Mako or RL) defines a pool.
-    const total = allocationPoolDays(project);
-    if (total > 0) {
-      const existing = await prisma.milestone.aggregate({
-        where: { projectId: input.projectId, isArchived: false },
-        _sum: { allocatedDays: true },
-      });
-      const used = existing._sum.allocatedDays ?? 0;
-      if (used + input.allocatedDays > total)
-        return badRequest(
-          `Over-allocates the timeline: ${used} of ${total} day(s) already allocated, ${total - used} remaining.`
-        );
-    }
-
-    const subSum = input.subtasks.reduce((s, t) => s + (t.allocatedDays ?? 0), 0);
-    if (subSum > input.allocatedDays)
-      return badRequest(
-        `Subtasks allocate ${subSum} day(s) but the milestone only has ${input.allocatedDays}.`
-      );
-  }
-
   try {
     const count = await prisma.milestone.count({ where: { projectId: input.projectId } });
     const milestone = await prisma.$transaction(async (tx) => {
@@ -96,8 +79,9 @@ export async function POST(req: Request) {
           type: input.type,
           changeRequestId: input.changeRequestId ?? null,
           ownerId: input.ownerId ?? null,
+          startDate: input.startDate ?? null,
           dueDate: input.dueDate ?? null,
-          allocatedDays: input.allocatedDays ?? null,
+          allocatedDays: rangeDays(input.startDate, input.dueDate),
           // All milestones start Upcoming; execution begins after the plan (main
           // scope) or the individual milestone (CR/delta) is approved.
           status: "yet_to_start",
@@ -111,18 +95,18 @@ export async function POST(req: Request) {
             milestoneId: m.id,
             title: s.title,
             assignedToId: s.assignedToId ?? null,
-            allocatedDays: s.allocatedDays ?? null,
+            startDate: s.startDate ?? null,
+            dueDate: s.dueDate ?? null,
+            allocatedDays: rangeDays(s.startDate, s.dueDate),
             sortOrder: i,
             createdBy: user.id,
           })),
         });
       }
       await writeAudit(
-        { actor: toAuditActor(user, req), action: "milestone.create", entityType: "milestone", entityId: m.id, after: { name: m.name, type: m.type, allocatedDays: m.allocatedDays, subtasks: input.subtasks.length }, metadata: { projectId: input.projectId } },
+        { actor: toAuditActor(user, req), action: "milestone.create", entityType: "milestone", entityId: m.id, after: { name: m.name, type: m.type, start: m.startDate, end: m.dueDate, subtasks: input.subtasks.length }, metadata: { projectId: input.projectId } },
         tx
       );
-      // Auto-derive due dates now that a milestone was added.
-      await recomputeDueDates(tx, input.projectId);
       return m;
     });
     return ok(milestone, 201);

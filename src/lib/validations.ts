@@ -87,6 +87,14 @@ export const markDependencySchema = z.object({
 });
 
 // ── Milestones & subtasks (Phase 3) ─────────────────────────────────────────
+// Subtasks are allocated by a date range within the milestone's range.
+const subtaskInput = z.object({
+  title: z.string().min(1).max(500),
+  assignedToId: uuid.optional().nullable(),
+  startDate: z.coerce.date().optional().nullable(),
+  dueDate: z.coerce.date().optional().nullable(),
+});
+
 export const createMilestoneSchema = z.object({
   projectId: uuid,
   name: z.string().min(1).max(500),
@@ -95,19 +103,10 @@ export const createMilestoneSchema = z.object({
   type: z.enum(["main_scope", "change_request", "delta_scope"]).default("main_scope"),
   changeRequestId: uuid.optional().nullable(),
   ownerId: uuid.optional().nullable(),
+  // Allocation is a date range (start + end); day count is derived server-side.
+  startDate: z.coerce.date().optional().nullable(),
   dueDate: z.coerce.date().optional().nullable(),
-  allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
-  // Optionally create subtasks inline (each drawing days from the milestone).
-  subtasks: z
-    .array(
-      z.object({
-        title: z.string().min(1).max(500),
-        assignedToId: uuid.optional().nullable(),
-        allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
-      })
-    )
-    .max(50)
-    .default([]),
+  subtasks: z.array(subtaskInput).max(50).default([]),
 });
 
 export const patchMilestoneSchema = z.object({
@@ -117,23 +116,14 @@ export const patchMilestoneSchema = z.object({
   name: z.string().min(1).max(500).optional(),
   description: z.string().max(2000).optional(),
   ownerId: uuid.optional().nullable(),
+  startDate: z.coerce.date().optional().nullable(),
   dueDate: z.coerce.date().optional().nullable(),
-  allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
   status: z
     .enum(["yet_to_start", "ongoing", "submitted", "revision_requested", "completed"])
     .optional(),
   // When present on an edit, the milestone's subtasks are replaced with this set
   // (edit is only allowed pre-approval, so no execution state is lost).
-  subtasks: z
-    .array(
-      z.object({
-        title: z.string().min(1).max(500),
-        assignedToId: uuid.optional().nullable(),
-        allocatedDays: z.number().int().min(0).max(3650).optional().nullable(),
-      })
-    )
-    .max(50)
-    .optional(),
+  subtasks: z.array(subtaskInput).max(50).optional(),
 });
 
 // Whole-plan approval: submit (PM) / approve|reject (RL).

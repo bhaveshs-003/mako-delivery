@@ -18,6 +18,8 @@ export type NotificationType =
   | "approval_sla_approaching"
   | "approval_sla_breached"
   | "dependency_sla_breach"
+  | "dependency_requested"
+  | "dependency_fulfilled"
   | "mom_deadline_approaching"
   | "mom_deadline_missed"
   | "cr_raised"

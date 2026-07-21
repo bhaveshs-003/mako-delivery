@@ -5,7 +5,8 @@ import { patchMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
-import { daysBetween } from "@/lib/allocation";
+import { workingDaysBetween } from "@/lib/working-days";
+import { holidaySet } from "@/lib/holidays";
 
 // PATCH /api/milestones/[id] — edit or change work status.
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -68,6 +69,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return ok({ reordered: true });
   }
 
+  // The project must be started before any milestone status can change.
+  if (body.action === "status" && milestone.project.status !== "in_progress")
+    return badRequest("Start the project before changing milestone statuses");
+
   // Spec §7.2: a milestone cannot be 'submitted' while it has blocked subtasks.
   if (body.action === "status" && body.status === "submitted") {
     const blocked = await prisma.subtask.count({
@@ -110,6 +115,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return ok(updated);
   }
 
+  const holidays = await holidaySet(milestone.projectId);
+  const wd = (s?: Date | null, e?: Date | null) =>
+    workingDaysBetween(s, e, { includeWeekends: milestone.project.includeWeekends, holidays });
+
   try {
     const updated = await prisma.$transaction(async (tx) => {
       const m = await tx.milestone.update({
@@ -125,7 +134,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
                 dueDate: body.dueDate ?? undefined,
                 allocatedDays:
                   body.startDate !== undefined || body.dueDate !== undefined
-                    ? daysBetween(body.startDate ?? milestone.startDate, body.dueDate ?? milestone.dueDate)
+                    ? wd(body.startDate ?? milestone.startDate, body.dueDate ?? milestone.dueDate)
                     : undefined,
               },
       });
@@ -138,10 +147,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             data: body.subtasks.map((s, i) => ({
               milestoneId: milestone.id,
               title: s.title,
+              description: s.description ?? null,
               assignedToId: s.assignedToId ?? null,
               startDate: s.startDate ?? null,
               dueDate: s.dueDate ?? null,
-              allocatedDays: daysBetween(s.startDate, s.dueDate),
+              allocatedDays: wd(s.startDate, s.dueDate),
               sortOrder: i,
               createdBy: user.id,
             })),

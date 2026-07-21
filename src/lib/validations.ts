@@ -90,6 +90,7 @@ export const markDependencySchema = z.object({
 // Subtasks are allocated by a date range within the milestone's range.
 const subtaskInput = z.object({
   title: z.string().min(1).max(500),
+  description: z.string().max(2000).optional().nullable(),
   assignedToId: uuid.optional().nullable(),
   startDate: z.coerce.date().optional().nullable(),
   dueDate: z.coerce.date().optional().nullable(),
@@ -126,6 +127,11 @@ export const patchMilestoneSchema = z.object({
   subtasks: z.array(subtaskInput).max(50).optional(),
 });
 
+// Drag-drop reorder: the full ordered list of milestone ids for a project.
+export const reorderMilestonesSchema = z.object({
+  orderedIds: z.array(uuid).min(1),
+});
+
 // Whole-plan approval: submit (PM) / approve|reject (RL).
 export const milestonePlanSchema = z.object({
   action: z.enum(["submit", "approve", "reject"]),
@@ -135,6 +141,30 @@ export const milestonePlanSchema = z.object({
 // Scope decision (RL POC approve/reject a specific scope / change-request doc).
 export const decideScopeSchema = z.object({
   scopeDocumentId: uuid,
+  action: z.enum(["approve", "reject"]),
+  decisionComment: z.string().max(2000).optional(),
+});
+
+// ── Project timeline proposals (RL POC approval flow) ───────────────────────
+// PM proposes RL + Mako date ranges; the project's real dates only apply once
+// the RL POC approves. Mirrors the scope-document flow.
+export const createTimelineProposalSchema = z
+  .object({
+    rlStartDate: z.coerce.date().optional().nullable(),
+    rlCommittedDeadline: z.coerce.date().optional().nullable(),
+    makoStartDate: z.coerce.date().optional().nullable(),
+    makoInternalDeadline: z.coerce.date().optional().nullable(),
+    includeWeekends: z.boolean().optional().default(false),
+    note: z.string().max(2000).optional(),
+  })
+  .refine(
+    (d) =>
+      d.rlStartDate || d.rlCommittedDeadline || d.makoStartDate || d.makoInternalDeadline,
+    { message: "Propose at least one timeline date" }
+  );
+
+export const decideTimelineSchema = z.object({
+  proposalId: uuid,
   action: z.enum(["approve", "reject"]),
   decisionComment: z.string().max(2000).optional(),
 });

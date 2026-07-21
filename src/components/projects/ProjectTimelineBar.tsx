@@ -14,6 +14,7 @@ export function ProjectTimelineBar({
   actual,
   rlDays,
   makoDays,
+  timelineApproved = false,
 }: {
   rlStart: Date | null;
   rlEnd: Date | null;
@@ -22,6 +23,7 @@ export function ProjectTimelineBar({
   actual: Date | null;
   rlDays: number | null;
   makoDays: number | null;
+  timelineApproved?: boolean;
 }) {
   const hasAny = rlStart || rlEnd || makoStart || makoEnd;
   if (!hasAny && rlDays == null && makoDays == null) {
@@ -33,20 +35,23 @@ export function ProjectTimelineBar({
 
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-      <TimelineDaysDonut rlDays={rlDays} makoDays={makoDays} size={62} />
+      <TimelineDaysDonut rlDays={rlDays} makoDays={makoDays} size={62} single={timelineApproved} />
 
       <div className="space-y-1 text-2xs">
+        {/* Once approved, only the agreed timeline is displayed. */}
+        {!timelineApproved && (
+          <div className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-muted">RL</span>
+            <span className="tabular text-ink-2">{range(rlStart, rlEnd)}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
-          <span className="w-9 shrink-0 text-muted">RL</span>
-          <span className="tabular text-ink-2">{range(rlStart, rlEnd)}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-9 shrink-0 text-muted">Mako</span>
+          <span className="w-14 shrink-0 text-muted">{timelineApproved ? "Timeline" : "Mako"}</span>
           <span className="tabular text-ink-2">{range(makoStart, makoEnd)}</span>
         </div>
         {actual && (
           <div className="flex items-center gap-2">
-            <span className="w-9 shrink-0 text-muted">Done</span>
+            <span className="w-14 shrink-0 text-muted">Done</span>
             <span className="tabular text-success">{formatDate(actual)}</span>
           </div>
         )}

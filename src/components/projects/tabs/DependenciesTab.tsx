@@ -7,8 +7,9 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { LogDependencyForm } from "@/components/forms/LogDependencyForm";
 import { MarkReceivedButton } from "@/components/forms/MarkReceivedForm";
+import { getDownloadUrl } from "@/lib/storage";
 import { formatDate } from "@/lib/utils";
-import { Link2, AlertTriangle } from "lucide-react";
+import { Link2, AlertTriangle, FileText } from "lucide-react";
 
 export async function DependenciesTab({
   projectId,
@@ -43,6 +44,14 @@ export async function DependenciesTab({
 
   const slaDefaults = Object.fromEntries(
     slaConfigs.map((c) => [c.dependencyType, c.thresholdDays])
+  );
+
+  const docUrls = Object.fromEntries(
+    await Promise.all(
+      dependencies
+        .filter((d) => d.fulfillmentDocKey)
+        .map(async (d) => [d.id, await getDownloadUrl(d.fulfillmentDocKey!)] as const)
+    )
   );
 
   return (
@@ -123,6 +132,12 @@ export async function DependenciesTab({
                             {d.subtask && <span className="text-muted"> · {d.subtask.title}</span>}
                           </p>
                         )}
+                        {docUrls[d.id] && (
+                          <a href={docUrls[d.id]} target="_blank" rel="noreferrer" className="mt-0.5 inline-flex items-center gap-1 text-2xs text-brand-ink hover:underline">
+                            <FileText className="h-3 w-3" /> {d.fulfillmentDocName}
+                          </a>
+                        )}
+                        {d.fulfillmentComment && <p className="mt-0.5 text-2xs text-ink-2">“{d.fulfillmentComment}”</p>}
                       </td>
                       <td className="px-3 py-3 capitalize text-slate">
                         {d.requestedFromParty.replace(/_/g, " ")}

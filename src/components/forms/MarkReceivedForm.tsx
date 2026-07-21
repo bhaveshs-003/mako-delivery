@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
 import { toast } from "@/components/ui/toast";
-import { apiFetch } from "@/lib/http";
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -41,6 +40,8 @@ export function MarkReceivedButton({
   const [dateReceived, setDateReceived] = useState(TODAY);
   const [rootCauseCategory, setRootCauseCategory] = useState("rl");
   const [rootCauseComment, setRootCauseComment] = useState("");
+  const [comment, setComment] = useState("");
+  const [file, setFile] = useState<File | null>(null);
 
   // RL fulfils rl-requested deps; the Mako side marks everything else received.
   const isRlFulfil = role === "rl_user" && requestedFromParty === "rl";
@@ -57,15 +58,18 @@ export function MarkReceivedButton({
   async function submit() {
     setBusy(true);
     try {
-      await apiFetch(`/api/dependencies/${dependencyId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          action: isRlFulfil ? "fulfill" : "receive",
-          dateReceived,
-          ...(breached ? { rootCauseCategory, rootCauseComment } : {}),
-        }),
-      });
-      toast.success(isRlFulfil ? "Dependency fulfilled" : "Dependency received");
+      const fd = new FormData();
+      fd.append("action", isRlFulfil ? "fulfill" : "receive");
+      fd.append("dateReceived", dateReceived);
+      if (comment.trim()) fd.append("comment", comment.trim());
+      if (file) fd.append("file", file);
+      if (breached) {
+        fd.append("rootCauseCategory", rootCauseCategory);
+        fd.append("rootCauseComment", rootCauseComment);
+      }
+      const res = await fetch(`/api/dependencies/${dependencyId}/fulfil`, { method: "POST", body: fd });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? "Action failed");
+      toast.success(isRlFulfil ? "Dependency sent" : "Dependency received");
       setOpen(false);
       router.refresh();
     } catch (e) {
@@ -79,16 +83,29 @@ export function MarkReceivedButton({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
-          {isRlFulfil ? "Mark Fulfilled" : "Mark Received"}
+          {isRlFulfil ? "Mark Sent" : "Mark Received"}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isRlFulfil ? "Mark Fulfilled" : "Mark Received"}</DialogTitle>
+          <DialogTitle>{isRlFulfil ? "Mark Sent" : "Mark Received"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Field label="Date Received" required>
             <Input type="date" max={TODAY} value={dateReceived} onChange={(e) => setDateReceived(e.target.value)} />
+          </Field>
+
+          <Field label={isRlFulfil ? "Document" : "Document (optional)"} hint=".xlsx / .docx / .pdf / .txt · max 25MB">
+            <input
+              type="file"
+              accept=".xlsx,.docx,.pdf,.txt"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-ink-2 file:mr-3 file:rounded-md file:border-0 file:bg-surface-2 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:bg-line"
+            />
+          </Field>
+
+          <Field label="Comment" hint={isRlFulfil ? "Add a note for the Mako team before sending" : "Optional note"}>
+            <Textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2} />
           </Field>
 
           <div className="flex items-center justify-between rounded-md border border-border bg-bg px-3 py-2 text-sm">

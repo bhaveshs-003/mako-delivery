@@ -97,6 +97,7 @@ export const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
   super_admin: [
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     { label: "Projects", href: "/projects", icon: "FolderKanban" },
+    { label: "Dependencies", href: "/dependencies", icon: "Waypoints" },
     { label: "Tickets", href: "/tickets", icon: "Ticket" },
     { label: "Reports", href: "/reports", icon: "BarChart3" },
     { label: "Resource Mgmt", href: "/resources", icon: "Users" },
@@ -106,6 +107,7 @@ export const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
   admin: [
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     { label: "Projects", href: "/projects", icon: "FolderKanban" },
+    { label: "Dependencies", href: "/dependencies", icon: "Waypoints" },
     { label: "Tickets", href: "/tickets", icon: "Ticket" },
     { label: "Reports", href: "/reports", icon: "BarChart3" },
     { label: "Resource Mgmt", href: "/resources", icon: "Users" },
@@ -114,12 +116,14 @@ export const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
   sub_admin: [
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     { label: "My Projects", href: "/projects", icon: "FolderKanban" },
+    { label: "Dependencies", href: "/dependencies", icon: "Waypoints" },
     { label: "Tickets", href: "/tickets", icon: "Ticket" },
     { label: "Notifications", href: "/notifications", icon: "Bell" },
   ],
   rl_user: [
     { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
     { label: "My Projects", href: "/projects", icon: "FolderKanban" },
+    { label: "Dependencies", href: "/dependencies", icon: "Waypoints" },
     { label: "Pending Approvals", href: "/approvals", icon: "CheckSquare" },
     { label: "Tickets", href: "/tickets", icon: "Ticket" },
     { label: "Reports", href: "/reports", icon: "BarChart3" },

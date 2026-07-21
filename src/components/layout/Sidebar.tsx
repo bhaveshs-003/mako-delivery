@@ -18,6 +18,7 @@ import {
   Bell,
   CheckSquare,
   ClipboardList,
+  Waypoints,
   Circle,
   type LucideIcon,
 } from "lucide-react";
@@ -38,6 +39,7 @@ const NAV_ICONS: Record<string, LucideIcon> = {
   Bell,
   CheckSquare,
   ClipboardList,
+  Waypoints,
 };
 
 function NavIcon({ name, className }: { name: string; className?: string }) {

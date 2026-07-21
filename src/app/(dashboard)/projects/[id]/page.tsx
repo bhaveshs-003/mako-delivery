@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -9,16 +8,15 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { ProjectActions } from "@/components/projects/ProjectActions";
 import { AssignResourcesDialog } from "@/components/projects/AssignResourcesDialog";
 import { ProjectTimelineBar } from "@/components/projects/ProjectTimelineBar";
+import { ProjectTabs } from "@/components/projects/ProjectTabs";
 import { ScopeUnderstandingCard } from "@/components/projects/ScopeUnderstandingCard";
 import { DependenciesTab } from "@/components/projects/tabs/DependenciesTab";
 import { LifecycleTab } from "@/components/projects/tabs/LifecycleTab";
 import { OverviewTab } from "@/components/projects/tabs/OverviewTab";
-import { ApprovalsTab } from "@/components/projects/tabs/ApprovalsTab";
 import { TicketsTab } from "@/components/projects/tabs/TicketsTab";
 import { MomsTab } from "@/components/projects/tabs/MomsTab";
 import { CommentsTab } from "@/components/projects/tabs/CommentsTab";
 import { DocumentsTab } from "@/components/projects/tabs/DocumentsTab";
-import { cn } from "@/lib/utils";
 import { rlProposedDays, makoPromisedDays } from "@/lib/allocation";
 
 const TABS: { key: string; label: string }[] = [
@@ -26,7 +24,6 @@ const TABS: { key: string; label: string }[] = [
   { key: "scope", label: "Scope Understanding" },
   { key: "lifecycle", label: "Lifecycle & Milestones" },
   { key: "dependencies", label: "Dependencies" },
-  { key: "approvals", label: "Approvals" },
   { key: "tickets", label: "Tickets" },
   { key: "moms", label: "MoMs" },
   { key: "comments", label: "Comments" },
@@ -57,6 +54,35 @@ export default async function ProjectDetailPage({
   });
 
   if (!project) notFound();
+
+  // Timeline approval state (#3) + per-tab attention indicators (#2).
+  const [approvedTimeline, pendingScope, pendingTimeline, scopeAgg, tlAgg, msAgg, depAgg, tkAgg, momAgg, crAgg] =
+    await Promise.all([
+      prisma.timelineProposal.count({ where: { projectId: project.id, status: "approved" } }),
+      prisma.scopeDocument.count({ where: { projectId: project.id, status: "pending" } }),
+      prisma.timelineProposal.count({ where: { projectId: project.id, status: "pending" } }),
+      prisma.scopeDocument.aggregate({ where: { projectId: project.id, kind: "scope" }, _max: { updatedAt: true } }),
+      prisma.timelineProposal.aggregate({ where: { projectId: project.id }, _max: { updatedAt: true } }),
+      prisma.milestone.aggregate({ where: { projectId: project.id }, _max: { updatedAt: true } }),
+      prisma.dependency.aggregate({ where: { projectId: project.id }, _max: { updatedAt: true } }),
+      prisma.ticket.aggregate({ where: { projectLinks: { some: { projectId: project.id } } }, _max: { updatedAt: true } }),
+      prisma.meeting.aggregate({ where: { projectId: project.id }, _max: { updatedAt: true } }),
+      prisma.scopeDocument.aggregate({ where: { projectId: project.id, kind: "change_request" }, _max: { updatedAt: true } }),
+    ]);
+  const timelineApproved = approvedTimeline > 0;
+  const attention: Record<string, boolean> = {
+    scope: pendingScope > 0 || pendingTimeline > 0,
+    lifecycle: project.milestonePlanStatus === "pending_approval",
+  };
+  // Latest activity per tab (ms) — drives the "new since you last viewed" dot.
+  const ms = (d?: Date | null) => (d ? d.getTime() : 0);
+  const activity: Record<string, number> = {
+    scope: Math.max(ms(scopeAgg._max.updatedAt), ms(tlAgg._max.updatedAt), ms(crAgg._max.updatedAt)),
+    lifecycle: ms(msAgg._max.updatedAt),
+    dependencies: ms(depAgg._max.updatedAt),
+    tickets: ms(tkAgg._max.updatedAt),
+    moms: ms(momAgg._max.updatedAt),
+  };
 
   const canManage =
     can(user.role, "project.edit") && canActOnProject(user, project);
@@ -102,6 +128,7 @@ export default async function ProjectDetailPage({
                 actual={project.actualCompletionDate}
                 rlDays={rlDays}
                 makoDays={makoDays}
+                timelineApproved={timelineApproved}
               />
             </div>
 
@@ -170,28 +197,14 @@ export default async function ProjectDetailPage({
           </div>
       </div>
 
-      {/* Sticky tab bar pinned to the top of the scroll area */}
-      <div className="sticky top-0 z-20 -mx-6 border-b border-line bg-canvas/85 px-6 backdrop-blur">
-        <nav className="scroll-slim flex gap-5 overflow-x-auto">
-          {TABS.map((tab) => {
-            const active = activeTab === tab.key;
-            return (
-              <Link
-                key={tab.key}
-                href={`/projects/${project.id}?tab=${tab.key}`}
-                className={cn(
-                  "-mb-px whitespace-nowrap border-b-2 px-0.5 py-2.5 text-sm transition-colors",
-                  active
-                    ? "border-brand font-medium text-ink"
-                    : "border-transparent text-muted hover:text-ink"
-                )}
-              >
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
+      {/* Sticky tab bar — highlights tabs with new/changed items until viewed */}
+      <ProjectTabs
+        projectId={project.id}
+        tabs={TABS}
+        activeTab={activeTab}
+        activity={activity}
+        attention={attention}
+      />
 
       {/* Tab content */}
       {activeTab === "overview" && (
@@ -215,14 +228,6 @@ export default async function ProjectDetailPage({
         />
       )}
       {activeTab === "dependencies" && <DependenciesTab projectId={project.id} role={user.role} canManage={canManage} />}
-      {activeTab === "approvals" && (
-        <ApprovalsTab
-          projectId={project.id}
-          userId={user.id}
-          canRequest={can(user.role, "approval.request") && canManage}
-          canDecide={can(user.role, "approval.decide") && canActOnProject(user, project)}
-        />
-      )}
       {activeTab === "tickets" && <TicketsTab projectId={project.id} user={user} />}
       {activeTab === "moms" && (
         <MomsTab projectId={project.id} userId={user.id} canLog={can(user.role, "meeting.log") && canActOnProject(user, project)} />

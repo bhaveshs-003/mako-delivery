@@ -37,6 +37,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!isOwnResourceTask && !isManager) {
     return badRequest("You do not have permission to update this subtask");
   }
+  if (project.status !== "in_progress")
+    return badRequest("Start the project before changing task statuses");
 
   try {
     const updated = await prisma.$transaction(async (tx) => {

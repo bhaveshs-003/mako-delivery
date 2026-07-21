@@ -45,6 +45,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       ? Math.min(365, Math.round(impactRaw))
       : null;
 
+  // A change request may propose a revised project timeline (applied on approval).
+  const proposedDate = (name: string) => {
+    if (kind !== "change_request") return null;
+    const raw = form.get(name);
+    if (typeof raw !== "string" || !raw.trim()) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const proposedRlStartDate = proposedDate("proposedRlStartDate");
+  const proposedRlCommittedDeadline = proposedDate("proposedRlCommittedDeadline");
+  const proposedMakoStartDate = proposedDate("proposedMakoStartDate");
+  const proposedMakoInternalDeadline = proposedDate("proposedMakoInternalDeadline");
+  const proposedIncludeWeekends =
+    kind === "change_request" && form.has("proposedIncludeWeekends")
+      ? form.get("proposedIncludeWeekends") === "true"
+      : null;
+
   // Gating differs by kind:
   //  - scope: only while scope is NOT yet approved; one pending at a time.
   //  - change_request: only AFTER scope is approved; each is independent.
@@ -72,6 +89,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           kind,
           title,
           timelineImpactDays,
+          proposedRlStartDate,
+          proposedRlCommittedDeadline,
+          proposedMakoStartDate,
+          proposedMakoInternalDeadline,
+          proposedIncludeWeekends,
           filename: file.name,
           fileKey: key,
           fileSize: BigInt(file.size),
@@ -140,8 +162,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const isScope = doc.kind === "scope";
 
-  // A change request with a timeline impact extends the Mako deadline on approval.
-  const willAdjust = !isScope && approved && !!doc.timelineImpactDays && doc.timelineImpactDays > 0;
+  // A change request may adjust the timeline on approval — either by proposing
+  // explicit new date ranges, or (legacy) by extending the deadline N days.
+  const hasProposedDates =
+    !!doc.proposedRlStartDate || !!doc.proposedRlCommittedDeadline ||
+    !!doc.proposedMakoStartDate || !!doc.proposedMakoInternalDeadline;
+  const willAdjust =
+    !isScope && approved && (hasProposedDates || (!!doc.timelineImpactDays && doc.timelineImpactDays > 0));
 
   try {
     const now = new Date();
@@ -161,12 +188,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (isScope) {
         await tx.project.update({ where: { id: project.id }, data: { scopeApproved: approved } });
       }
-      // Retain the CR timeline adjustment: extend the Mako internal deadline.
+      // Retain the CR timeline adjustment. Prefer the proposed date ranges;
+      // fall back to the legacy N-business-day deadline extension.
       let deadline: Date | null = null;
-      const base = project.makoInternalDeadline ?? project.rlCommittedDeadline;
-      if (willAdjust && base) {
-        deadline = addBusinessDaysTo(base, doc.timelineImpactDays!);
-        await tx.project.update({ where: { id: project.id }, data: { makoInternalDeadline: deadline } });
+      if (!isScope && approved && hasProposedDates) {
+        await tx.project.update({
+          where: { id: project.id },
+          data: {
+            rlStartDate: doc.proposedRlStartDate ?? undefined,
+            rlCommittedDeadline: doc.proposedRlCommittedDeadline ?? undefined,
+            makoStartDate: doc.proposedMakoStartDate ?? undefined,
+            makoInternalDeadline: doc.proposedMakoInternalDeadline ?? undefined,
+            includeWeekends: doc.proposedIncludeWeekends ?? undefined,
+          },
+        });
+        deadline = doc.proposedMakoInternalDeadline ?? null;
+      } else if (willAdjust) {
+        const base = project.makoInternalDeadline ?? project.rlCommittedDeadline;
+        if (base) {
+          deadline = addBusinessDaysTo(base, doc.timelineImpactDays!);
+          await tx.project.update({ where: { id: project.id }, data: { makoInternalDeadline: deadline } });
+        }
       }
       await writeAudit(
         { actor: toAuditActor(user, req), action: `${isScope ? "scope" : "change_request"}.${approved ? "approve" : "reject"}`, entityType: "project", entityId: project.id, after: { status: d.status, newDeadline: deadline } },

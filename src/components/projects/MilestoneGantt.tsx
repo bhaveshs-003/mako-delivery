@@ -45,6 +45,7 @@ export function MilestoneGantt({
   rlEnd,
   makoStart,
   makoEnd,
+  timelineApproved = false,
   now,
   addButton,
 }: {
@@ -53,6 +54,7 @@ export function MilestoneGantt({
   rlEnd: Date | null;
   makoStart: Date | null;
   makoEnd: Date | null;
+  timelineApproved?: boolean;
   now: Date;
   addButton?: ReactNode;
 }) {
@@ -154,12 +156,15 @@ export function MilestoneGantt({
           </div>
         </div>
 
-        {/* Reference timelines */}
-        <Row label={<span className="flex items-center gap-1.5 text-2xs font-medium text-muted"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.rl }} />RL proposed</span>}>
-          {refBar(rlStart, rlEnd, ATTRIBUTION_COLORS.rl, "RL")}
-        </Row>
-        <Row label={<span className="flex items-center gap-1.5 text-2xs font-medium text-muted"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.mako }} />Mako promised</span>}>
-          {refBar(makoStart, makoEnd, ATTRIBUTION_COLORS.mako, "Mako")}
+        {/* Reference timeline(s). Once the timeline is approved, only the agreed
+            (Mako) timeline is shown. */}
+        {!timelineApproved && (
+          <Row label={<span className="flex items-center gap-1.5 text-2xs font-medium text-muted"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.rl }} />RL proposed</span>}>
+            {refBar(rlStart, rlEnd, ATTRIBUTION_COLORS.rl, "RL")}
+          </Row>
+        )}
+        <Row label={<span className="flex items-center gap-1.5 text-2xs font-medium text-muted"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.mako }} />{timelineApproved ? "Timeline" : "Mako promised"}</span>}>
+          {refBar(makoStart, makoEnd, ATTRIBUTION_COLORS.mako, timelineApproved ? "Timeline" : "Mako")}
         </Row>
 
         {/* Milestones + subtasks */}

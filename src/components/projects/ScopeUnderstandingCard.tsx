@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { UploadScopeForm } from "@/components/forms/UploadScopeForm";
 import { ScopeDecision } from "@/components/projects/ScopeDecision";
+import { TimelineDecision } from "@/components/projects/TimelineDecision";
 import { ProjectTimelineForm } from "@/components/forms/ProjectTimelineForm";
+import { HolidayManager } from "@/components/projects/HolidayManager";
 import { CalendarRange, FileText, ShieldCheck, GitPullRequestArrow } from "lucide-react";
 
 type SignedDoc = { doc: ScopeDocument; url: string };
@@ -28,11 +30,12 @@ export async function ScopeUnderstandingCard({
   canDecide: boolean;
   decerId: string;
 }) {
-  const [project, docs] = await Promise.all([
+  const [project, docs, proposals, holidayRows] = await Promise.all([
     prisma.project.findUnique({
       where: { id: projectId },
       select: {
         scopeApproved: true,
+        includeWeekends: true,
         rlStartDate: true,
         rlCommittedDeadline: true,
         makoStartDate: true,
@@ -40,7 +43,11 @@ export async function ScopeUnderstandingCard({
       },
     }),
     prisma.scopeDocument.findMany({ where: { projectId }, orderBy: { submittedAt: "desc" } }),
+    prisma.timelineProposal.findMany({ where: { projectId }, orderBy: { submittedAt: "desc" } }),
+    prisma.holiday.findMany({ where: { projectId }, orderBy: { date: "asc" }, select: { id: true, date: true, label: true } }),
   ]);
+  const holidays = holidayRows.map((h) => ({ id: h.id, date: h.date.toISOString().slice(0, 10), label: h.label }));
+  const holidayDates = holidays.map((h) => h.date);
   const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : "");
   const signed = await Promise.all(
     docs.map(async (d) => ({ doc: d, url: await getDownloadUrl(d.fileKey) }))
@@ -53,6 +60,14 @@ export async function ScopeUnderstandingCard({
   const scopePending = scopeDocs.some((s) => s.doc.status === "pending");
   const canUploadScope = canSubmit && !scopeApproved && !scopePending;
   const canRaiseCR = canSubmit && scopeApproved;
+  const timelinePending = proposals.some((p) => p.status === "pending");
+  const timelineApproved = proposals.some((p) => p.status === "approved");
+  // Weekends + holidays can only be declared while the timeline is still
+  // editable — i.e. not submitted (pending) and not yet approved.
+  const canEditTimeline = canSubmit && !timelinePending && !timelineApproved;
+
+  const fmtRange = (a: Date | null, b: Date | null) =>
+    a || b ? `${a ? formatDate(a) : "—"} → ${b ? formatDate(b) : "—"}` : "no dates";
 
   const renderDoc = ({ doc, url }: SignedDoc, isLatest: boolean) => (
     <div
@@ -87,6 +102,14 @@ export async function ScopeUnderstandingCard({
         </div>
       </div>
 
+      {(doc.proposedRlStartDate || doc.proposedRlCommittedDeadline || doc.proposedMakoStartDate || doc.proposedMakoInternalDeadline) && (
+        <div className="mt-2 space-y-0.5 rounded-md bg-surface-2 px-3 py-1.5 text-xs text-ink-2">
+          <p className="text-2xs font-medium uppercase tracking-wide text-muted">Proposed timeline</p>
+          <p><span className="text-muted">RL</span> {fmtRange(doc.proposedRlStartDate, doc.proposedRlCommittedDeadline)}</p>
+          <p><span className="text-muted">Mako</span> {fmtRange(doc.proposedMakoStartDate, doc.proposedMakoInternalDeadline)}</p>
+        </div>
+      )}
+
       {doc.note && <p className="mt-2 rounded-md bg-surface-2 px-3 py-1.5 text-xs text-ink-2">{doc.note}</p>}
 
       {doc.status === "rejected" && doc.decisionComment && (
@@ -114,28 +137,7 @@ export async function ScopeUnderstandingCard({
 
   return (
     <div className="space-y-4">
-      {/* Project timeline declaration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarRange className="h-4 w-4 text-muted" /> Project Timeline
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-2">
-          <ProjectTimelineForm
-            projectId={projectId}
-            canEdit={canSubmit}
-            initial={{
-              rlStart: iso(project?.rlStartDate),
-              rlEnd: iso(project?.rlCommittedDeadline),
-              makoStart: iso(project?.makoStartDate),
-              makoEnd: iso(project?.makoInternalDeadline),
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Scope understanding */}
+      {/* Scope Understanding = project timeline + scope document, one card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2">
@@ -148,22 +150,100 @@ export async function ScopeUnderstandingCard({
             )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-3 pt-2">
-          {scopeDocs.length === 0 ? (
-            <p className="text-sm text-muted">
-              No scope document uploaded yet. Milestones and starting the project are locked until
-              the RL POC approves a scope understanding document.
+        <CardContent className="space-y-4 pt-2">
+          {/* Project timeline */}
+          <div className="space-y-3">
+            <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-muted">
+              <CalendarRange className="h-3.5 w-3.5" /> Project Timeline
             </p>
-          ) : (
-            <>
-              {scopeDocs.map((s, i) => renderDoc(s, i === 0))}
-              {scopeApproved && (
-                <p className="text-xs text-success">
-                  Scope is approved and locked — raise a change request below to change it.
-                </p>
-              )}
-            </>
+          <ProjectTimelineForm
+            projectId={projectId}
+            canEdit={canSubmit}
+            hasPending={timelinePending}
+            approved={timelineApproved}
+            holidays={holidayDates}
+            initial={{
+              rlStart: iso(project?.rlStartDate),
+              rlEnd: iso(project?.rlCommittedDeadline),
+              makoStart: iso(project?.makoStartDate),
+              makoEnd: iso(project?.makoInternalDeadline),
+              includeWeekends: project?.includeWeekends ?? false,
+            }}
+          />
+
+          <HolidayManager projectId={projectId} holidays={holidays} canManage={canEditTimeline} />
+
+          {proposals.length > 0 && (
+            <div className="space-y-2 border-t border-line pt-3">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-muted">Proposals</p>
+              {proposals.map((p) => (
+                <div
+                  key={p.id}
+                  className={`rounded-lg border px-3 py-2.5 ${
+                    p.status === "pending" ? "border-line bg-surface" : "border-line/60 bg-surface-2/40 opacity-90"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 space-y-0.5 text-xs text-ink-2">
+                      <p><span className="text-muted">RL</span> {fmtRange(p.rlStartDate, p.rlCommittedDeadline)}</p>
+                      <p><span className="text-muted">Mako</span> {fmtRange(p.makoStartDate, p.makoInternalDeadline)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={p.status} />
+                      <span className="text-2xs text-muted">
+                        {formatDate(p.submittedAt)}
+                        {p.approvalDurationDays != null && ` · ${p.approvalDurationDays}d to decide`}
+                      </span>
+                    </div>
+                  </div>
+
+                  {p.status === "rejected" && p.decisionComment && (
+                    <p className="mt-2 text-xs">
+                      <span className="font-medium text-danger">Rejected:</span>{" "}
+                      <span className="text-ink-2">{p.decisionComment}</span>
+                    </p>
+                  )}
+                  {p.status === "approved" && p.decisionComment && (
+                    <p className="mt-2 text-xs text-success">“{p.decisionComment}”</p>
+                  )}
+
+                  {p.status === "pending" && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2">
+                      <p className="text-xs text-muted">
+                        {canDecide ? "Review and decide this proposed timeline." : "Awaiting RL POC approval."}
+                      </p>
+                      {canDecide && p.submittedById !== decerId && (
+                        <TimelineDecision projectId={projectId} proposalId={p.id} />
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
+          </div>
+
+          {/* Scope document */}
+          <div className="space-y-3 border-t border-line pt-4">
+            <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-muted">
+              <ShieldCheck className="h-3.5 w-3.5" /> Scope Document
+            </p>
+            {scopeDocs.length === 0 ? (
+              <p className="text-sm text-muted">
+                No scope document uploaded yet. Milestones and starting the project are locked until
+                the RL POC approves a scope understanding document.
+              </p>
+            ) : (
+              <>
+                {scopeDocs.map((s, i) => renderDoc(s, i === 0))}
+                {scopeApproved && (
+                  <p className="text-xs text-success">
+                    Scope is approved and locked — raise a change request below to change it.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -174,7 +254,7 @@ export async function ScopeUnderstandingCard({
             <CardTitle className="flex items-center gap-2">
               <GitPullRequestArrow className="h-4 w-4 text-muted" /> Change Requests
             </CardTitle>
-            {canRaiseCR && <UploadScopeForm projectId={projectId} kind="change_request" />}
+            {canRaiseCR && <UploadScopeForm projectId={projectId} kind="change_request" includeWeekendsDefault={project?.includeWeekends ?? false} />}
           </CardHeader>
           <CardContent className="space-y-3 pt-2">
             {crDocs.length === 0 ? (

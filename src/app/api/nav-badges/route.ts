@@ -13,11 +13,19 @@ export async function GET() {
   const scope = projectScopeWhere(user);
   const isOrgWide = user.role === "super_admin" || user.role === "admin";
 
-  const [unread, apprReq, scopeDocs, plans, tickets, tasks] = await Promise.all([
+  const [unread, apprReq, scopeDocs, plans, timelineProposals, dependencies, tickets, tasks] = await Promise.all([
     prisma.notification.count({ where: { recipientId: user.id, isRead: false } }),
     prisma.approvalRequest.count({ where: { status: "pending", project: scope } }),
     prisma.scopeDocument.count({ where: { status: "pending", project: scope } }),
     prisma.project.count({ where: { milestonePlanStatus: "pending_approval", ...scope } }),
+    prisma.timelineProposal.count({ where: { status: "pending", project: scope } }),
+    prisma.dependency.count({
+      where: {
+        project: scope,
+        status: { not: "received" },
+        ...(user.role === "rl_user" ? { requestedFromParty: "rl" } : {}),
+      },
+    }),
     prisma.ticket.count({
       where: {
         status: { notIn: ["closed", "resolved"] },
@@ -29,7 +37,8 @@ export async function GET() {
 
   const badges: Record<string, number> = {
     "/notifications": unread,
-    "/approvals": apprReq + scopeDocs + plans,
+    "/approvals": apprReq + scopeDocs + plans + timelineProposals,
+    "/dependencies": dependencies,
     "/tickets": tickets,
     "/tasks": tasks,
   };

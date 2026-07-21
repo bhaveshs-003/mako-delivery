@@ -4,12 +4,8 @@ import { readJson, ok, badRequest, notFound, serverError } from "@/lib/api";
 import { createMilestoneSchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
-import { daysBetween } from "@/lib/allocation";
-
-// Derived day span of a [start, end] range (null when the range is incomplete).
-function rangeDays(start?: Date | null, end?: Date | null): number | null {
-  return daysBetween(start, end);
-}
+import { workingDaysBetween } from "@/lib/working-days";
+import { holidaySet } from "@/lib/holidays";
 
 // POST /api/milestones — add a milestone (Sub-admin scoped / Admin+ full),
 // optionally with inline subtasks. Allocation is by date range; day counts are
@@ -67,6 +63,11 @@ export async function POST(req: Request) {
       return badRequest("Subtask assignees must be resources on this project");
   }
 
+  // Working-day arithmetic honours the project's weekend policy + org holidays.
+  const holidays = await holidaySet(project.id);
+  const wd = (s?: Date | null, e?: Date | null) =>
+    workingDaysBetween(s, e, { includeWeekends: project.includeWeekends, holidays });
+
   try {
     const count = await prisma.milestone.count({ where: { projectId: input.projectId } });
     const milestone = await prisma.$transaction(async (tx) => {
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
           ownerId: input.ownerId ?? null,
           startDate: input.startDate ?? null,
           dueDate: input.dueDate ?? null,
-          allocatedDays: rangeDays(input.startDate, input.dueDate),
+          allocatedDays: wd(input.startDate, input.dueDate),
           // All milestones start Upcoming; execution begins after the plan (main
           // scope) or the individual milestone (CR/delta) is approved.
           status: "yet_to_start",
@@ -94,10 +95,11 @@ export async function POST(req: Request) {
           data: input.subtasks.map((s, i) => ({
             milestoneId: m.id,
             title: s.title,
+            description: s.description ?? null,
             assignedToId: s.assignedToId ?? null,
             startDate: s.startDate ?? null,
             dueDate: s.dueDate ?? null,
-            allocatedDays: rangeDays(s.startDate, s.dueDate),
+            allocatedDays: wd(s.startDate, s.dueDate),
             sortOrder: i,
             createdBy: user.id,
           })),

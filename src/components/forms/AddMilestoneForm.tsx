@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,13 +17,12 @@ import { Input, Textarea, Select, Field } from "@/components/ui/form-field";
 import { toast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/http";
 import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
+import { workingDaysBetween } from "@/lib/working-days";
+import { SubtaskEditorDialog } from "@/components/forms/SubtaskEditorDialog";
 
 type Person = { id: string; name: string };
-type SubtaskDraft = { title: string; assignedToId: string; start: string; end: string };
+type SubtaskDraft = { title: string; description: string; assignedToId: string; start: string; end: string };
 type MilestoneType = "main_scope" | "change_request" | "delta_scope";
-
-const dayCount = (a: string, b: string) =>
-  a && b ? Math.max(0, Math.round((+new Date(b) - +new Date(a)) / 86400000)) : null;
 
 export function AddMilestoneForm({
   projectId,
@@ -34,6 +33,8 @@ export function AddMilestoneForm({
   changeRequests = [],
   timelineStart,
   timelineEnd,
+  includeWeekends = false,
+  holidays = [],
 }: {
   projectId: string;
   resources: Person[];
@@ -43,7 +44,11 @@ export function AddMilestoneForm({
   changeRequests?: { id: string; label: string }[];
   timelineStart?: string | null;
   timelineEnd?: string | null;
+  includeWeekends?: boolean;
+  holidays?: string[];
 }) {
+  const dayCount = (a: string, b: string) =>
+    a && b ? workingDaysBetween(a, b, { includeWeekends, holidays }) : null;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,6 +99,7 @@ export function AddMilestoneForm({
             .filter((s) => s.title.trim())
             .map((s) => ({
               title: s.title,
+              description: s.description || null,
               assignedToId: s.assignedToId || null,
               startDate: s.start || null,
               dueDate: s.end || null,
@@ -189,37 +195,54 @@ export function AddMilestoneForm({
             </Field>
           </div>
 
-          {/* Subtasks */}
+          {/* Subtasks — added/edited via a side drawer */}
           <div className="rounded-lg border border-line bg-surface-2/40 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Subtasks</p>
-            <div className="mt-2 space-y-2">
-              {subtasks.map((s, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2">
-                  <Input className="min-w-[140px] flex-1" placeholder="Subtask title" value={s.title} onChange={(e) => updateSub(i, { title: e.target.value })} />
-                  <Select className="w-32" value={s.assignedToId} onChange={(e) => updateSub(i, { assignedToId: e.target.value })}>
-                    <option value="">Unassigned</option>
-                    {resources.map((r) => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
-                    ))}
-                  </Select>
-                  <Input type="date" className="w-36" value={s.start} min={start || undefined} max={s.end || end || undefined} onChange={(e) => updateSub(i, { start: e.target.value })} />
-                  <Input type="date" className="w-36" value={s.end} min={s.start || start || undefined} max={end || undefined} onChange={(e) => updateSub(i, { end: e.target.value })} />
-                  <button type="button" onClick={() => setSubtasks((rows) => rows.filter((_, j) => j !== i))} className="text-muted hover:text-danger" title="Remove">
-                    <Trash2 className="h-4 w-4" />
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Subtasks</p>
+              <SubtaskEditorDialog
+                resources={resources}
+                milestoneStart={start || undefined}
+                milestoneEnd={end || undefined}
+                heading="New subtask"
+                onSave={(draft) => setSubtasks((rows) => [...rows, draft])}
+                trigger={
+                  <button type="button" className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline">
+                    <Plus className="h-3.5 w-3.5" /> Add subtask
                   </button>
-                </div>
-              ))}
+                }
+              />
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {subtasks.map((s, i) => {
+                const days = dayCount(s.start, s.end);
+                return (
+                  <div key={i} className="flex items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-ink">{s.title}</p>
+                      <p className="truncate text-2xs text-muted">
+                        {resources.find((r) => r.id === s.assignedToId)?.name ?? "Unassigned"}
+                        {days != null && ` · ${days}d`}
+                      </p>
+                    </div>
+                    <SubtaskEditorDialog
+                      resources={resources}
+                      milestoneStart={start || undefined}
+                      milestoneEnd={end || undefined}
+                      heading="Edit subtask"
+                      initial={s}
+                      onSave={(draft) => updateSub(i, draft)}
+                      trigger={<button type="button" className="text-muted hover:text-ink" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>}
+                    />
+                    <button type="button" onClick={() => setSubtasks((rows) => rows.filter((_, j) => j !== i))} className="text-muted hover:text-danger" title="Remove">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
               {subtasks.length === 0 && (
-                <p className="text-2xs text-muted">No subtasks. Add tasks and set each one’s date range within the milestone.</p>
+                <p className="text-2xs text-muted">No subtasks. Use “Add subtask” to open the editor.</p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => setSubtasks((rows) => [...rows, { title: "", assignedToId: "", start: "", end: "" }])}
-              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-            >
-              <Plus className="h-3.5 w-3.5" /> Add subtask
-            </button>
             {!subtasksOk && (
               <p className="mt-2 flex items-center gap-1 text-2xs text-danger">
                 <X className="h-3 w-3" /> Each subtask needs a title and a valid date range.

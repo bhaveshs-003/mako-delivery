@@ -5,6 +5,7 @@ import { createDependencySchema } from "@/lib/validations";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { deriveDependencyState } from "@/lib/sla";
+import { notifyMany } from "@/lib/notifications";
 
 // POST /api/dependencies — log a dependency (Sub-admin scoped / Admin+ full).
 export async function POST(req: Request) {
@@ -82,6 +83,26 @@ export async function POST(req: Request) {
       );
       return d;
     });
+
+    // Notify the party the dependency is requested from so it surfaces to them.
+    // RL-requested → the RL POCs; otherwise the Mako project lead.
+    const recipients =
+      input.requestedFromParty === "mako"
+        ? project.projectLeadId
+          ? [project.projectLeadId]
+          : []
+        : project.rlConsultants.map((c) => c.userId);
+    if (recipients.length) {
+      await notifyMany(recipients, {
+        type: "dependency_requested",
+        title: `Dependency requested on ${project.title}`,
+        body: `${user.name} logged a ${input.type.replace(/_/g, " ")} dependency requested from ${input.requestedFromParty.replace(/_/g, " ")}.`,
+        entityType: "dependency",
+        entityId: dep.id,
+        projectId: input.projectId,
+        deepLinkPath: `/dependencies`,
+      });
+    }
 
     return ok(dep, 201);
   } catch (e) {

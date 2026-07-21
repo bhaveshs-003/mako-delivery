@@ -276,6 +276,9 @@ model Project {
   // milestones can be created or the project started (denormalized for fast gating).
   scopeApproved Boolean @default(false)
 
+  // Whether Sat/Sun count as working days for this project's day arithmetic.
+  includeWeekends Boolean @default(false)
+
   // Pause tracking (current state; full history in PauseHistory)
   currentPauseReasonCategory AttributionParty?
   currentPauseReasonComment  String?
@@ -302,6 +305,8 @@ model Project {
   pauseHistory   PauseHistory[]
   notifications  Notification[]
   scopeDocuments ScopeDocument[]
+  timelineProposals TimelineProposal[]
+  holidays       Holiday[]
 
   @@index([status])
   @@index([type])
@@ -320,8 +325,16 @@ model ScopeDocument {
 
   kind     ScopeDocumentKind @default(scope)
   title    String? // short label (used for change requests)
-  timelineImpactDays Int? // change requests: business days added to the deadline on approval
+  timelineImpactDays Int? // change requests: business days added to the deadline on approval (legacy)
   timelineAdjusted   Boolean @default(false)
+
+  // Change requests may propose a revised project timeline (RL + Mako date
+  // ranges). Any non-null value is written to the project when the CR is approved.
+  proposedRlStartDate          DateTime?
+  proposedRlCommittedDeadline  DateTime?
+  proposedMakoStartDate        DateTime?
+  proposedMakoInternalDeadline DateTime?
+  proposedIncludeWeekends      Boolean? // if set, applied to the project on approval
   filename String
   fileKey  String // storage key
   fileSize BigInt
@@ -342,6 +355,57 @@ model ScopeDocument {
   @@index([projectId])
   @@index([status])
   @@map("scope_documents")
+}
+
+// A proposed project timeline (RL + Mako date ranges) submitted by the PM and
+// approved/rejected by the RL POC. The project's actual dates are only written
+// on approval — mirroring the ScopeDocument approve/reject flow. History is
+// preserved; a new pending proposal supersedes an earlier pending one.
+model TimelineProposal {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Proposed date ranges (any subset may be set)
+  rlStartDate          DateTime?
+  rlCommittedDeadline  DateTime?
+  makoStartDate        DateTime?
+  makoInternalDeadline DateTime?
+  includeWeekends      Boolean @default(false) // applied to the project on approval
+
+  note String? // optional submitter note
+
+  status               ScopeStatus @default(pending)
+  submittedById        String
+  submittedAt          DateTime    @default(now())
+  decidedById          String?
+  decidedAt            DateTime?
+  decisionComment      String?
+  approvalDurationDays Int? // days RL took to decide (submit → decide)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@map("timeline_proposals")
+}
+
+// Organisational (non-working) days declared for a project as part of its
+// timeline. Excluded from that project's working-day arithmetic. Editable only
+// while the timeline is still editable (not yet submitted/approved).
+model Holiday {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  label     String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, date])
+  @@index([projectId])
+  @@map("holidays")
 }
 
 model ProjectRlConsultant {
@@ -509,6 +573,11 @@ model Dependency {
 
   fulfilledBy String?
   fulfilledAt DateTime?
+
+  // RL provides a document + note when fulfilling ("sending") a dependency.
+  fulfillmentComment String?
+  fulfillmentDocKey  String?
+  fulfillmentDocName  String?
 
   createdBy String
   createdAt DateTime @default(now())

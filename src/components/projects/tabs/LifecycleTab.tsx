@@ -6,14 +6,15 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { SubtaskStatusControl } from "@/components/projects/SubtaskStatusControl";
 import { MilestoneStatusControl } from "@/components/projects/MilestoneStatusControl";
 import { SubmitMilestoneApproval } from "@/components/projects/SubmitMilestoneApproval";
-import { MilestoneReorder } from "@/components/projects/MilestoneReorder";
+import { MilestoneDragList } from "@/components/projects/MilestoneDragList";
 import { MilestonePlanSubmit } from "@/components/projects/MilestonePlanSubmit";
 import { MilestoneGantt } from "@/components/projects/MilestoneGantt";
 import { AddMilestoneForm } from "@/components/forms/AddMilestoneForm";
 import { EditMilestoneForm } from "@/components/forms/EditMilestoneForm";
 import { MilestoneDetail } from "@/components/projects/MilestoneDetail";
 import { getDownloadUrl } from "@/lib/storage";
-import { allocationPoolDays } from "@/lib/allocation";
+import { workingDaysBetween } from "@/lib/working-days";
+import { holidaySet } from "@/lib/holidays";
 import { formatDate } from "@/lib/utils";
 import { MILESTONE_TYPE_LABELS } from "@/lib/constants";
 import { ListChecks, AlertTriangle, ShieldAlert } from "lucide-react";
@@ -54,14 +55,16 @@ export async function LifecycleTab({
     },
   });
 
-  const [project, commentRows, attachmentRows, projectResources, approvedCRs] = await Promise.all([
+  const [project, commentRows, attachmentRows, projectResources, approvedCRs, approvedTimeline, holidays] = await Promise.all([
     prisma.project.findUnique({
       where: { id: projectId },
       select: {
+        status: true,
         rlStartDate: true,
         rlCommittedDeadline: true,
         makoStartDate: true,
         makoInternalDeadline: true,
+        includeWeekends: true,
         scopeApproved: true,
         milestonePlanStatus: true,
         milestonePlanApprovalDays: true,
@@ -87,12 +90,22 @@ export async function LifecycleTab({
       select: { id: true, scopeDelta: true },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.timelineProposal.count({ where: { projectId, status: "approved" } }),
+    holidaySet(projectId),
   ]);
 
-  const totalDays = project ? allocationPoolDays(project) : 0;
+  const includeWeekends = project?.includeWeekends ?? false;
+  const wdOpts = { includeWeekends, holidays };
+  const timelineApproved = approvedTimeline > 0;
+  const totalDays =
+    workingDaysBetween(project?.makoStartDate, project?.makoInternalDeadline, wdOpts) ??
+    workingDaysBetween(project?.rlStartDate, project?.rlCommittedDeadline, wdOpts) ??
+    0;
   const usedDays = milestones.reduce((s, m) => s + (m.allocatedDays ?? 0), 0);
+  const holidayList = Array.from(holidays);
 
   const scopeApproved = project?.scopeApproved ?? false;
+  const projectStarted = project?.status === "in_progress";
   const planStatus = (project?.milestonePlanStatus ?? "draft") as
     | "draft" | "pending_approval" | "approved" | "rejected";
   const planApproved = planStatus === "approved";
@@ -109,8 +122,9 @@ export async function LifecycleTab({
   const timelineStart = isoDate(project?.makoStartDate ?? project?.rlStartDate);
   const timelineEnd = isoDate(project?.makoInternalDeadline ?? project?.rlCommittedDeadline);
 
+  // Once the plan is approved there is no provision to add milestones.
   const addMilestoneEl =
-    canManage && scopeApproved ? (
+    canManage && scopeApproved && !planApproved ? (
       <AddMilestoneForm
         projectId={projectId}
         resources={resources}
@@ -120,6 +134,8 @@ export async function LifecycleTab({
         changeRequests={changeRequests}
         timelineStart={timelineStart}
         timelineEnd={timelineEnd}
+        includeWeekends={includeWeekends}
+        holidays={holidayList}
       />
     ) : null;
 
@@ -204,6 +220,7 @@ export async function LifecycleTab({
             rlEnd={project?.rlCommittedDeadline ?? null}
             makoStart={project?.makoStartDate ?? null}
             makoEnd={project?.makoInternalDeadline ?? null}
+            timelineApproved={timelineApproved}
             now={now}
             addButton={addMilestoneEl}
           />
@@ -215,8 +232,10 @@ export async function LifecycleTab({
           <EmptyState icon={ListChecks} title="No milestones yet" subtitle="Add milestones with date ranges, then submit the whole plan to RL for approval." />
         )
       ) : (
-        <ol className="space-y-2">
-          {milestones.map((m, idx) => {
+        <MilestoneDragList
+          projectId={projectId}
+          enabled={canManage && !planLocked}
+          items={milestones.map((m, idx) => {
             const subDone = m.subtasks.filter((s) => s.status === "done").length;
             const overdue = m.dueDate && m.status !== "completed" && new Date(m.dueDate) < now;
             const isMain = m.type === "main_scope";
@@ -225,21 +244,17 @@ export async function LifecycleTab({
             const editable = isMain
               ? canManage && !planLocked
               : canManage && m.approvalStatus !== "approved" && m.approvalStatus !== "pending";
-            const reorderable = isMain && canManage && !planLocked;
             const submittable = !isMain && canManage && (m.approvalStatus === "not_required" || m.approvalStatus === "rejected");
             // Execution (status changes) is unlocked once the plan (main scope) or
-            // the individual milestone (CR/delta) is approved.
+            // the individual milestone (CR/delta) is approved — AND the project is started.
             const inExecution = isMain ? planApproved : m.approvalStatus === "approved";
-            const executable = canManage && inExecution;
+            const executable = canManage && inExecution && projectStarted;
 
-            return (
-              <li key={m.id} className="rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs">
+            const node = (
+              <div className="rounded-lg border border-line bg-surface transition-shadow hover:shadow-xs">
                 {/* Milestone header */}
                 <div className="flex items-start justify-between gap-3 p-3">
                   <div className="flex min-w-0 items-start gap-2">
-                    {reorderable && (
-                      <MilestoneReorder milestoneId={m.id} isFirst={idx === 0} isLast={idx === milestones.length - 1} />
-                    )}
                     <span className="tabular mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-2 text-2xs font-semibold text-ink-2">
                       {idx + 1}
                     </span>
@@ -290,6 +305,7 @@ export async function LifecycleTab({
                         }}
                         initialSubtasks={m.subtasks.map((s) => ({
                           title: s.title,
+                          description: s.description ?? "",
                           assignedToId: s.assignedToId ?? "",
                           start: isoDate(s.startDate) ?? "",
                           end: isoDate(s.dueDate) ?? "",
@@ -298,6 +314,8 @@ export async function LifecycleTab({
                         poolUsedByOthers={usedDays - (m.allocatedDays ?? 0)}
                         timelineStart={timelineStart}
                         timelineEnd={timelineEnd}
+                        includeWeekends={includeWeekends}
+                        holidays={holidayList}
                       />
                     )}
                     {submittable && (
@@ -322,13 +340,13 @@ export async function LifecycleTab({
                       // Subtask status is editable only once the milestone is in
                       // execution (plan/milestone approved).
                       const canEditSubtask =
-                        inExecution && (canManage || (userRole === "resource" && s.assignedToId === userId));
+                        inExecution && projectStarted && (canManage || (userRole === "resource" && s.assignedToId === userId));
                       return (
                         <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md px-1.5 py-1 hover:bg-surface">
                           <div className="flex min-w-0 items-center gap-2">
                             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[s.status] ?? "bg-muted"}`} />
                             {s.status === "blocked" && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-danger" />}
-                            <span className="truncate text-sm text-ink-2">{s.title}</span>
+                            <span className="truncate text-sm text-ink-2" title={s.description ?? undefined}>{s.title}</span>
                             {s.assignedTo && <span className="shrink-0 text-2xs text-muted">· {s.assignedTo.name}</span>}
                           </div>
                           <div className="flex items-center gap-2">
@@ -370,10 +388,11 @@ export async function LifecycleTab({
                     documents={docsByMilestone.get(m.id) ?? []}
                   />
                 </div>
-              </li>
+              </div>
             );
+            return { id: m.id, node };
           })}
-        </ol>
+        />
       )}
 
       {/* Whole-plan approval footer */}

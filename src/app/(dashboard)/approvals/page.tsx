@@ -27,9 +27,9 @@ export default async function ApprovalsPage() {
   const now = new Date();
   const scope = projectScopeWhere(user);
 
-  // Three kinds of RL decision surface here: individual milestone approvals,
-  // scope-understanding documents, and whole milestone plans.
-  const [approvals, scopeDocs, planProjects] = await Promise.all([
+  // Four kinds of RL decision surface here: individual milestone approvals,
+  // scope-understanding documents, whole milestone plans, and timeline proposals.
+  const [approvals, scopeDocs, planProjects, timelineProposals] = await Promise.all([
     prisma.approvalRequest.findMany({
       where: { status: "pending", project: scope },
       orderBy: { slaDeadline: "asc" },
@@ -48,6 +48,11 @@ export default async function ApprovalsPage() {
       where: { milestonePlanStatus: "pending_approval", ...scope },
       orderBy: { milestonePlanSubmittedAt: "asc" },
       select: { id: true, title: true },
+    }),
+    prisma.timelineProposal.findMany({
+      where: { status: "pending", project: scope },
+      orderBy: { submittedAt: "asc" },
+      include: { project: { select: { id: true, title: true } } },
     }),
   ]);
 
@@ -73,6 +78,17 @@ export default async function ApprovalsPage() {
       deadline: null,
       breached: false,
       tab: "lifecycle",
+    })),
+    ...timelineProposals.map((t) => ({
+      key: `timeline-${t.id}`,
+      projectId: t.project.id,
+      projectTitle: t.project.title,
+      item: "Project timeline",
+      kind: "Timeline",
+      who: "—",
+      deadline: null,
+      breached: false,
+      tab: "scope",
     })),
     ...approvals.map((a) => ({
       key: `appr-${a.id}`,

@@ -10,10 +10,13 @@ export function TimelineDaysDonut({
   rlDays,
   makoDays,
   size = 64,
+  single = false,
 }: {
   rlDays: number | null;
   makoDays: number | null;
   size?: number;
+  // When true, only the agreed (Mako) timeline is shown — no RL comparison.
+  single?: boolean;
 }) {
   const max = Math.max(rlDays ?? 0, makoDays ?? 0, 1);
   const stroke = 5;
@@ -61,8 +64,8 @@ export function TimelineDaysDonut({
     <div className="flex items-center gap-3.5">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="block">
-          {ring(rOuter, cOuter, rlDays, ATTRIBUTION_COLORS.rl, "RL proposed")}
-          {ring(rInner, cInner, makoDays, ATTRIBUTION_COLORS.mako, "Mako promised")}
+          {!single && ring(rOuter, cOuter, rlDays, ATTRIBUTION_COLORS.rl, "RL proposed")}
+          {ring(single ? rOuter : rInner, single ? cOuter : cInner, makoDays, ATTRIBUTION_COLORS.mako, single ? "Timeline" : "Mako promised")}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
           <span className="tabular text-[17px] font-semibold text-ink">{headline ?? "—"}</span>
@@ -71,14 +74,18 @@ export function TimelineDaysDonut({
       </div>
 
       <div className="grid grid-cols-[auto_auto] items-center gap-x-2.5 gap-y-1.5 text-2xs">
-        <span className="flex items-center gap-1.5 text-muted">
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.rl }} />
-          RL proposed
-        </span>
-        <span className="tabular text-right font-semibold text-ink">{rlDays != null ? `${rlDays}d` : "—"}</span>
+        {!single && (
+          <>
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.rl }} />
+              RL proposed
+            </span>
+            <span className="tabular text-right font-semibold text-ink">{rlDays != null ? `${rlDays}d` : "—"}</span>
+          </>
+        )}
         <span className="flex items-center gap-1.5 text-muted">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: ATTRIBUTION_COLORS.mako }} />
-          Mako promised
+          {single ? "Timeline" : "Mako promised"}
         </span>
         <span className="tabular text-right font-semibold text-ink">{makoDays != null ? `${makoDays}d` : "—"}</span>
       </div>

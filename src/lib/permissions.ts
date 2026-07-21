@@ -21,6 +21,7 @@ export type SessionUser = {
 export const ROUTE_ACCESS: Record<string, UserRole[]> = {
   dashboard: ["super_admin", "admin", "sub_admin", "rl_user", "resource"],
   projects: ["super_admin", "admin", "sub_admin", "rl_user"], // resource → /tasks
+  dependencies: ["super_admin", "admin", "sub_admin", "rl_user"],
   tasks: ["super_admin", "admin", "resource"],
   approvals: ["super_admin", "admin", "sub_admin", "rl_user"],
   tickets: ["super_admin", "admin", "sub_admin", "rl_user", "resource"],
